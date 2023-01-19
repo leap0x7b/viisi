@@ -4,15 +4,15 @@ A RISC-V hobby computer inspired by old 80s and 90s UNIX workstations.
 It's currently very bare bones right now, but it does have an almost full RV64IM(A) emulator. You can run one of the test files with `zig build run -- tests/<file>.bin`.
 
 ## Progress
-- [-] RV64GC emulator
+- [X] RV64GC emulator (WIP)
   - [X] RV32I - Base 32-bit instruction set
   - [X] RV64I - Base 64-bit instruction set
   - [X] M - Multiplication and division
-  - [-] A - Atomic instructions
+  - [X] A - Atomic instructions (WIP)
   - [ ] F - Single-precision floating point
   - [ ] D - Double-precision floating point
   - [ ] C - Compressed instructions
-  - [-] Zi - Additional extensions
+  - [X] Zi - Additional extensions (WIP)
     - [X] Zicsr - Control and status register
     - [ ] Zifencei - Load/store fence
 - [ ] Other actual stuff
