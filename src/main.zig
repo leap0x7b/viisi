@@ -7,6 +7,7 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
+    const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
     const stderr = std.io.getStdErr().writer();
 
@@ -47,13 +48,21 @@ pub fn main() !void {
         const file = try std.fs.cwd().openFile(res.positionals[0], .{ .mode = .read_only });
         defer file.close();
 
-        var cpu = riscv.Cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256);
+        var cpu = try riscv.Cpu.init(stdin, stdout);
+        try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256);
 
         const stat = try file.stat();
         while (cpu.pc - riscv.Bus.DRAM_BASE < stat.size) {
-            const inst = cpu.fetch();
+            const inst = cpu.fetch() catch |exception| blk: {
+                riscv.Trap.handleTrap(exception, &cpu);
+                if (riscv.Trap.isFatal(exception)) break;
+                break :blk 0;
+            };
             cpu.pc += 4;
-            try cpu.execute(inst);
+            cpu.execute(inst) catch |exception| {
+                riscv.Trap.handleTrap(exception, &cpu);
+                if (riscv.Trap.isFatal(exception)) break;
+            };
             if (cpu.pc == 0) break;
         }
 

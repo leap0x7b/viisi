@@ -15,6 +15,7 @@ It's currently very bare bones right now, but it does have an almost full RV64IM
   - [X] Zi - Additional extensions (WIP)
     - [X] Zicsr - Control and status register
     - [ ] Zifencei - Load/store fence
+  - [ ] Pass all tests in [riscv-tests](https://github.com/riscv/riscv-tests)
 - [ ] Other actual stuff
 
 ## Credits

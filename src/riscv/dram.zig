@@ -1,4 +1,4 @@
-const std = @import("std");
+const Trap = @import("trap.zig");
 const Bus = @import("bus.zig");
 
 const Self = @This();
@@ -6,7 +6,7 @@ const Self = @This();
 dram: []u8,
 size: usize,
 
-pub fn load(self: *Self, comptime T: type, address: u64) !u64 {
+pub fn load(self: *Self, comptime T: type, address: u64) Trap.Exception!u64 {
     const index = address - Bus.DRAM_BASE;
     // zig fmt: off
     return switch (T) {
@@ -25,12 +25,12 @@ pub fn load(self: *Self, comptime T: type, address: u64) !u64 {
             | (@intCast(u64, self.dram[index + 5]) << 40)
             | (@intCast(u64, self.dram[index + 6]) << 48)
             | (@intCast(u64, self.dram[index + 7]) << 56),
-        else => return error.UnsupportedType,
+        else => return .LoadAddressFault,
     };
     // zig fmt: on
 }
 
-pub fn store(self: *Self, comptime T: type, address: u64, value: u64) !void {
+pub fn store(self: *Self, comptime T: type, address: u64, value: u64) Trap.Exception!void {
     const index = address - Bus.DRAM_BASE;
     // zig fmt: off
     switch (T) {
@@ -55,7 +55,7 @@ pub fn store(self: *Self, comptime T: type, address: u64, value: u64) !void {
             self.dram[index + 6] = @intCast(u8, (value >> 48) & 0xff);
             self.dram[index + 7] = @intCast(u8, (value >> 56) & 0xff);
         },
-        else => return error.UnsupportedType,
+        else => return .LoadAddressFault,
     }
     // zig fmt: on
 }
