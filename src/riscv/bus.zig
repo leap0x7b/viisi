@@ -5,7 +5,7 @@ const Clint = @import("clint.zig");
 const Plic = @import("plic.zig");
 const Uart = @import("uart.zig").Uart;
 
-pub const DRAM_BASE: u64 = 0x2000_0000;
+pub const DRAM_BASE: u64 = 0x1000_0000;
 
 pub const Mmio = struct {
     pub const Entry = struct {

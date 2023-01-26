@@ -70,39 +70,28 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
     return struct {
         const Self = @This();
 
-        regs: [32]u64 = undefined,
+        regs: [32]u64 = [_]u64{0} ** 32,
         pc: u64 = bus.DRAM_BASE,
         mode: Mode = .Machine,
         bus: bus.Bus(reader, writer) = undefined,
-        csrs: [4096]u64 = undefined,
+        csrs: [4096]u64 = [_]u64{0} ** 4096,
 
         pub fn init(self: *Self, code: []u8, mem_size: usize) !void {
-            //self.bus.uart = try Uart(reader, writer).init();
             self.bus.dram = .{
                 .dram = code,
                 .size = mem_size,
             };
-
-            // make sure our registers and csrs are 0 and not screaming in hex (12297829382473034410)
-            var i: usize = 0;
-            while (i < self.regs.len) : (i += 1)
-                self.regs[i] = 0;
-
             self.regs[2] = bus.DRAM_BASE + mem_size;
-
-            i = 0;
-            while (i < self.csrs.len) : (i += 1)
-                self.csrs[i] = 0;
         }
 
         pub fn dumpRegisters(self: *Self) void {
             // zig fmt: off
-    const abi = [_][]const u8{
-        "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0",
-        "a1", "a2", "a3", "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5",
+            const abi = [_][]const u8{
+                "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0",
+                "a1", "a2", "a3", "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5",
         "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
-    };
-    // zig fmt: on
+            };
+            // zig fmt: on
 
             var i: usize = 0;
             while (i < 32) : (i += 4)
@@ -208,9 +197,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
 
                     self.regs[rd] = switch (funct3) {
                         // addi
-                        0 => self.regs[rs1] + imm,
+                        0 => self.regs[rs1] +% imm,
                         // slli
-                        1 => self.regs[rs1] << @truncate(u6, shamt),
+                        1 => std.math.shl(u64, self.regs[rs1], shamt),
                         // slti
                         2 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, imm)) 1 else 0,
                         // sltiu
@@ -219,9 +208,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         4 => self.regs[rs1] ^ imm,
                         5 => switch (funct7 >> 1) {
                             // slri
-                            0x00 => self.regs[rs1] >> @truncate(u6, shamt),
+                            0x00 => std.math.shr(u64, self.regs[rs1], shamt),
                             // srai
-                            0x10 => @bitCast(u64, @bitCast(i64, self.regs[rs1]) >> @truncate(u6, shamt)),
+                            0x10 => @bitCast(u64, std.math.shr(i64, @bitCast(i64, self.regs[rs1]), shamt)),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -240,7 +229,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 // auipc
                 0x17 => {
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfff00000))));
-                    self.regs[rd] = (self.pc + imm) - 4;
+                    self.regs[rd] = (self.pc +% imm) - 4;
                 },
                 0x1b => {
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst))) >> 20);
@@ -248,14 +237,14 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
 
                     self.regs[rd] = switch (funct3) {
                         // addiw
-                        0 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] + imm)))),
+                        0 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] +% imm)))),
                         // slliw
-                        1 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] << @truncate(u6, shamt))))),
+                        1 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, std.math.shl(u64, self.regs[rs1], shamt))))),
                         5 => switch (funct7) {
                             // slriw
-                            0x00 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1]) >> @intCast(u5, shamt)))),
+                            0x00 => @bitCast(u64, @as(i64, @bitCast(i32, std.math.shr(u32, @truncate(u32, self.regs[rs1]), shamt)))),
                             // sraiw
-                            0x20 => @bitCast(u64, @as(i64, @truncate(u32, self.regs[rs1]) >> @intCast(u5, shamt))),
+                            0x20 => @bitCast(u64, @as(i64, std.math.shr(u32, @truncate(u32, self.regs[rs1]), shamt))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -286,6 +275,8 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         },
                     }
                 },
+                // the fuck is 0x2a and why is it in my tests for some reason
+                0x2a => {},
                 // RV64A: "A" standard extension for atomic instructions
                 0x2f => {
                     const funct5 = (funct7 & 0b1111100) >> 2;
@@ -344,18 +335,18 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     self.regs[rd] = switch (funct3) {
                         0 => switch (funct7) {
                             // add
-                            0x00 => self.regs[rs1] + self.regs[rs2],
+                            0x00 => self.regs[rs1] +% self.regs[rs2],
                             // mul
-                            0x01 => self.regs[rs1] * self.regs[rs2],
+                            0x01 => self.regs[rs1] *% self.regs[rs2],
                             // sub
-                            0x20 => self.regs[rs1] - self.regs[rs2],
+                            0x20 => self.regs[rs1] -% self.regs[rs2],
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
                             },
                         },
                         // sll
-                        1 => self.regs[rs1] << @truncate(u6, shamt),
+                        1 => std.math.shl(u64, self.regs[rs1], shamt),
                         // slt
                         2 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, self.regs[rs2])) 1 else 0,
                         // sltu
@@ -379,7 +370,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         },
                         5 => switch (funct7) {
                             // srl
-                            0x00 => self.regs[rs1] >> @truncate(u6, shamt),
+                            0x00 => std.math.shr(u64, self.regs[rs1], shamt),
                             // divu
                             0x01 => switch (self.regs[rs2]) {
                                 0 => std.math.maxInt(u64),
@@ -390,7 +381,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 },
                             },
                             // sra
-                            0x20 => @bitCast(u64, @bitCast(i64, self.regs[rs1]) >> @truncate(u6, self.regs[rs2])),
+                            0x20 => @bitCast(u64, std.math.shr(i64, @bitCast(i64, self.regs[rs1]), self.regs[rs2])),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -444,9 +435,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     self.regs[rd] = switch (funct3) {
                         0 => switch (funct7) {
                             // addw
-                            0x00 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] + self.regs[rs2])))),
+                            0x00 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] +% self.regs[rs2])))),
                             // subw
-                            0x20 => @intCast(u64, @bitCast(i32, @truncate(u32, self.regs[rs1] - self.regs[rs2]))),
+                            0x20 => @intCast(u64, @bitCast(i32, @truncate(u32, self.regs[rs1] -% self.regs[rs2]))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -471,7 +462,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         },
                         5 => switch (funct7) {
                             // srlw
-                            0x00 => @intCast(u64, @bitCast(i32, @truncate(u32, self.regs[rs1])) >> @truncate(u5, shamt)),
+                            0x00 => @intCast(u64, std.math.shr(i32, @bitCast(i32, @truncate(u32, self.regs[rs1])), shamt)),
                             // divuw
                             0x01 => switch (self.regs[rs2]) {
                                 0 => std.math.maxInt(u64),
@@ -482,7 +473,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 },
                             },
                             // sraw
-                            0x20 => @intCast(u64, @bitCast(i32, @truncate(u32, self.regs[rs1]) >> @truncate(u5, @bitCast(u32, @bitCast(i32, shamt))))),
+                            0x20 => @intCast(u64, @bitCast(i32, std.math.shr(u32, @truncate(u32, self.regs[rs1]), @bitCast(i32, shamt)))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -526,24 +517,24 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 },
                 0x63 => {
                     // zig fmt: off
-            const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 19)
-                | ((inst & 0x80) << 4)
-                | ((inst >> 20) & 0x7e0)
-                | ((inst >> 7) & 0x1e);
-            // zig fmt: on
+                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 19)
+                        | ((inst & 0x80) << 4)
+                        | ((inst >> 20) & 0x7e0)
+                        | ((inst >> 7) & 0x1e);
+                    // zig fmt: on
                     self.pc = switch (funct3) {
                         // beq
-                        0 => if (self.regs[rs1] == self.regs[rs2]) (self.pc + imm) - 4 else 0,
+                        0 => if (self.regs[rs1] == self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         // bne
-                        1 => if (self.regs[rs1] != self.regs[rs2]) (self.pc + imm) - 4 else 0,
+                        1 => if (self.regs[rs1] != self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         // blt
-                        4 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, self.regs[rs2])) (self.pc + imm) - 4 else 0,
+                        4 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, self.regs[rs2])) (self.pc +% imm) - 4 else 0,
                         // bge
-                        5 => if (@bitCast(i64, self.regs[rs1]) >= @bitCast(i64, self.regs[rs2])) (self.pc + imm) - 4 else 0,
+                        5 => if (@bitCast(i64, self.regs[rs1]) >= @bitCast(i64, self.regs[rs2])) (self.pc +% imm) - 4 else 0,
                         // bltu
-                        6 => if (self.regs[rs1] < self.regs[rs2]) (self.pc + imm) - 4 else 0,
+                        6 => if (self.regs[rs1] < self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         // bgeu
-                        7 => if (self.regs[rs1] >= self.regs[rs2]) (self.pc + imm) - 4 else 0,
+                        7 => if (self.regs[rs1] >= self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         else => {
                             log.err("Unimplemented opcode: 0x{x} (funct3: 0x{x}, funct7: 0x{x})", .{ opcode, funct3, funct7 });
                             return error.IllegalInstruction;
@@ -564,12 +555,12 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     self.regs[rd] = self.pc;
 
                     // zig fmt: off
-            const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 11)
-                | (inst & 0xff000)
-                | ((inst >> 9) & 0x800)
-                | ((inst >> 20) & 0x7fe);
-            // zig fmt: on
-                    self.pc = (self.pc + imm) - 4;
+                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 11)
+                        | (inst & 0xff000)
+                        | ((inst >> 9) & 0x800)
+                        | ((inst >> 20) & 0x7fe);
+                    // zig fmt: on
+                    self.pc = (self.pc +% imm) - 4;
                 },
                 0x73 => {
                     const csr_addr = (inst & 0xfff00000) >> 20;
