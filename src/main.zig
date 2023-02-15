@@ -48,8 +48,11 @@ pub fn main() !void {
         const file = try std.fs.cwd().openFile(res.positionals[0], .{ .mode = .read_only });
         defer file.close();
 
-        var cpu = try riscv.Cpu.init(stdin, stdout);
-        try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256);
+        const buffered_stdin = std.io.bufferedReader(stdin);
+        const buffered_stdout = std.io.bufferedWriter(stdout);
+
+        var cpu = try riscv.Cpu.init(buffered_stdin, buffered_stdout);
+        try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, arena.allocator());
 
         const stat = try file.stat();
         while (cpu.pc - riscv.Bus.DRAM_BASE < stat.size) {

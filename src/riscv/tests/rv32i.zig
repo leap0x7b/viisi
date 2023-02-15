@@ -7,11 +7,14 @@ pub fn emuTest(_code: []const u8, expected_regs: []const []const u64, expected_p
     var buffer = [_]u8{0} ** 1024;
     var stream = std.io.fixedBufferStream(&buffer);
 
+    var reader = std.io.bufferedReader(stream.reader());
+    var writer = std.io.bufferedWriter(stream.writer());
+
     var code: [1024]u8 = undefined;
     std.mem.copy(u8, &code, _code);
 
-    var cpu = try Cpu.init(stream.reader(), stream.writer());
-    try cpu.init(&code, 1024 * 1024 * 256);
+    var cpu = try Cpu.init(reader, writer);
+    try cpu.init(&code, 1024 * 1024 * 256, std.testing.allocator);
 
     //while (cpu.pc - Bus.DRAM_BASE < code.len) {
     while (true) {

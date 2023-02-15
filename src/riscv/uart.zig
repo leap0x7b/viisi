@@ -43,7 +43,8 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
         }
 
         fn threadFn(self: *Self) void {
-            const byte = self.reader.readByte() catch unreachable;
+            const byte = self.reader.reader().readByte() catch unreachable;
+            std.debug.print("yes", .{});
 
             self.mutex.lock();
             defer self.mutex.unlock();
@@ -55,6 +56,7 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
             self.interrupting.store(true, .Release);
 
             self.uart[LSR - Bus.Mmio.Uart.base] |= LSR_RX;
+            std.debug.print("yes", .{});
         }
 
         pub fn load(self: *Self, comptime T: type, address: u64) Trap.Exception!u64 {
@@ -77,7 +79,11 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
             if (T != u8) return error.StoreAMOAccessFault;
 
             switch (address) {
-                THR => self.writer.print("{c}", .{@truncate(u8, value)}) catch return error.StoreAMOAccessFault,
+                THR => {
+                    std.debug.print("{c}", .{@truncate(u8, value)});
+                    self.writer.writer().print("{c}", .{@truncate(u8, value)}) catch return error.StoreAMOAccessFault;
+                    self.writer.flush() catch return error.StoreAMOAccessFault;
+                },
                 else => self.uart[(address - Bus.Mmio.Uart.base)] = @truncate(u8, value),
             }
         }

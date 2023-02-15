@@ -76,9 +76,11 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
         bus: bus.Bus(reader, writer) = undefined,
         csrs: [4096]u64 = [_]u64{0} ** 4096,
 
-        pub fn init(self: *Self, code: []u8, mem_size: usize) !void {
+        pub fn init(self: *Self, code: []u8, comptime mem_size: usize, allocator: std.mem.Allocator) !void {
+            var dram = try allocator.alloc(u8, mem_size);
+            std.mem.copy(u8, dram, code);
             self.bus.dram = .{
-                .dram = code,
+                .dram = dram,
                 .size = mem_size,
             };
             self.regs[2] = bus.DRAM_BASE + mem_size;
@@ -159,7 +161,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 0x00 => {},
                 0x03 => {
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst))) >> 20);
-                    const addr = self.regs[rs1] + imm;
+                    const addr = self.regs[rs1] +% imm;
 
                     self.regs[rd] = switch (funct3) {
                         // lb
@@ -258,7 +260,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 },
                 0x23 => {
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfe000000))) >> 20) | ((inst >> 7) & 0x1f);
-                    const addr = self.regs[rs1] + imm;
+                    const addr = self.regs[rs1] +% imm;
 
                     switch (funct3) {
                         // sb

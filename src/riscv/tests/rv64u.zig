@@ -10,11 +10,14 @@ pub fn emuTest(filename: []const u8) !void {
     var buffer = [_]u8{0} ** 1024;
     var stream = std.io.fixedBufferStream(&buffer);
 
+    var reader = std.io.bufferedReader(stream.reader());
+    var writer = std.io.bufferedWriter(stream.writer());
+
     const file = try std.fs.cwd().openFile(filename, .{ .mode = .read_only });
     defer file.close();
 
-    var cpu = try Cpu.init(stream.reader(), stream.writer());
-    try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256);
+    var cpu = try Cpu.init(reader, writer);
+    try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, arena.allocator());
 
     const stat = try file.stat();
     while (cpu.pc - Bus.DRAM_BASE < stat.size) {

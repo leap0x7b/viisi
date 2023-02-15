@@ -1,3 +1,4 @@
+const std = @import("std");
 const Trap = @import("trap.zig");
 const Bus = @import("bus.zig");
 
@@ -25,14 +26,13 @@ pub fn load(self: *Self, comptime T: type, address: u64) Trap.Exception!u64 {
             | (@intCast(u64, self.dram[index + 5]) << 40)
             | (@intCast(u64, self.dram[index + 6]) << 48)
             | (@intCast(u64, self.dram[index + 7]) << 56),
-        else => return .LoadAddressFault,
+        else => return error.LoadAddressFault,
     };
     // zig fmt: on
 }
 
 pub fn store(self: *Self, comptime T: type, address: u64, value: u64) Trap.Exception!void {
     const index = address - Bus.DRAM_BASE;
-    // zig fmt: off
     switch (T) {
         u8 => self.dram[index] = @intCast(u8, value),
         u16 => {
@@ -55,7 +55,6 @@ pub fn store(self: *Self, comptime T: type, address: u64, value: u64) Trap.Excep
             self.dram[index + 6] = @intCast(u8, (value >> 48) & 0xff);
             self.dram[index + 7] = @intCast(u8, (value >> 56) & 0xff);
         },
-        else => return .LoadAddressFault,
+        else => return error.LoadAddressFault,
     }
-    // zig fmt: on
 }

@@ -44,6 +44,7 @@ pub const Mmio = struct {
 
     .Uart = .{
         .base = 0x300000,
+        //.base = 0x10000000,
         .size = 0x100,
     },
 
