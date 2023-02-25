@@ -5,7 +5,7 @@ const Clint = @import("clint.zig");
 const Plic = @import("plic.zig");
 const Uart = @import("uart.zig").Uart;
 
-pub const DRAM_BASE: u64 = 0x1000_0000;
+pub const DRAM_BASE: u64 = 0x80000000;
 
 pub const Mmio = struct {
     pub const Entry = struct {
@@ -28,38 +28,37 @@ pub const Mmio = struct {
     },
 
     .BootRom = .{
-        .base = 0x1000,
+        .base = 0xf000,
         .size = 0x80000, // 512 KB
     },
 
     .Clint = .{
-        .base = 0x80010,
+        .base = 0x2000000,
         .size = 0x10000,
     },
 
     .Plic = .{
-        .base = 0x90010,
+        .base = 0xc000000,
         .size = 0x208000,
     },
 
     .Uart = .{
-        .base = 0x300000,
-        //.base = 0x10000000,
+        .base = 0x10000000,
         .size = 0x100,
     },
 
     .Framebuffer = .{
-        .base = 0x300200,
+        .base = 0x10001000,
         .size = 0xc0000, // 1024x768 (TODO: try to make a framebuffer with a redefinable resolution if possible)
     },
 
     .Disk = .{
-        .base = 0x3c0400,
+        .base = 0x20000000,
         .size = 0x100,
     },
 
     .Keyboard = .{
-        .base = 0x3c0600,
+        .base = 0x20001000,
         .size = 1,
     },
 };

@@ -12,6 +12,7 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
     const exe_options = b.addOptions();
 
+    // From zls
     const version = v: {
         const version_string = b.fmt("{d}.{d}.{d}", .{ viisi_version.major, viisi_version.minor, viisi_version.patch });
 
@@ -36,7 +37,7 @@ pub fn build(b: *std.build.Builder) void {
                 const commit_id = it.next().?;
 
                 const ancestor_ver = std.builtin.Version.parse(tagged_ancestor) catch unreachable;
-                std.debug.assert(viisi_version.order(ancestor_ver) == .gt); // zls version must be greater than its previous version
+                std.debug.assert(viisi_version.order(ancestor_ver) == .gt); // version must be greater than its previous version
                 std.debug.assert(std.mem.startsWith(u8, commit_id, "g")); // commit hash is prefixed with a 'g'
 
                 break :v b.fmt("{s}-dev.{s}+{s}", .{ version_string, commit_height, commit_id[1..] });
@@ -55,6 +56,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.setBuildMode(mode);
     exe.addOptions("build_options", exe_options);
     deps.addAllTo(exe);
+    exe.linkLibC();
     exe.install();
 
     const run_cmd = exe.run();

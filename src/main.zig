@@ -1,15 +1,33 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const clap = @import("clap");
+const mibu = @import("mibu");
+const term = @import("term.zig");
 const riscv = @import("riscv.zig");
+
+pub const std_options = struct {
+    pub const logFn = log;
+};
+
+// From https://github.com/leap0x7b/faruos/blob/rewrite-again/src/lara/arch/x86_64/main.zig
+pub fn log(comptime level: std.log.Level, comptime scope: @Type(.EnumLiteral), comptime format: []const u8, args: anytype) void {
+    const scope_prefix = if (scope == .default) "main" else @tagName(scope);
+    const prefix = "\x1b[32m[viisi:" ++ scope_prefix ++ "] " ++ switch (level) {
+        .err => "\x1b[31merror",
+        .warn => "\x1b[33mwarning",
+        .info => "\x1b[36minfo",
+        .debug => "\x1b[90mdebug",
+    } ++ ": \x1b[0m";
+    std.io.getStdOut().writer().print(prefix ++ format ++ "\n", args) catch unreachable;
+}
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    const stdin = std.io.getStdIn().reader();
-    const stdout = std.io.getStdOut().writer();
-    const stderr = std.io.getStdErr().writer();
+    const stdin = std.io.getStdIn();
+    const stdout = std.io.getStdOut();
+    const stderr = std.io.getStdErr();
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help     Display this help and exit.
@@ -25,18 +43,18 @@ pub fn main() !void {
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, parsers, .{ .diagnostic = &diag }) catch |err| {
         std.debug.print("viisi: ", .{});
-        diag.report(stderr, err) catch {};
+        diag.report(stderr.writer(), err) catch {};
         std.debug.print("\n", .{});
-        try usage(&params, stderr);
+        try usage(&params, stderr.writer());
         return std.debug.print("Try `viisi --help` for more information.\n", .{});
     };
     defer res.deinit();
 
     if (res.args.help)
-        return help(&params, stderr);
+        return help(&params, stderr.writer());
 
     if (res.args.version)
-        return stdout.print(
+        return stdout.writer().print(
             \\Viisi {s}
             \\Copyright © 2023 leap123.
             \\
@@ -48,8 +66,11 @@ pub fn main() !void {
         const file = try std.fs.cwd().openFile(res.positionals[0], .{ .mode = .read_only });
         defer file.close();
 
-        const buffered_stdin = std.io.bufferedReader(stdin);
-        const buffered_stdout = std.io.bufferedWriter(stdout);
+        const buffered_stdin = std.io.bufferedReader(stdin.reader());
+        const buffered_stdout = std.io.bufferedWriter(stdout.writer());
+
+        var raw_mode = try term.enableRawMode(stdin.handle, .Blocking);
+        defer raw_mode.disableRawMode() catch unreachable;
 
         var cpu = try riscv.Cpu.init(buffered_stdin, buffered_stdout);
         try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, arena.allocator());
@@ -70,7 +91,6 @@ pub fn main() !void {
         }
 
         cpu.dumpRegisters();
-        std.debug.print("\n", .{});
         cpu.dumpCsrs();
     }
 }

@@ -2,7 +2,7 @@ const std = @import("std");
 const Trap = @import("trap.zig");
 const bus = @import("bus.zig");
 const Uart = @import("uart.zig").Uart;
-const log = std.log.scoped(.Cpu);
+const log = std.log.scoped(.cpu);
 
 // Machine-level CSRs
 /// Hardware thread ID.
@@ -95,6 +95,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
             };
             // zig fmt: on
 
+            log.debug("Registers:", .{});
             var i: usize = 0;
             while (i < 32) : (i += 4)
                 log.debug("x{:0>2}({s})=0x{x} x{:0>2}({s})=0x{x} x{:0>2}({s})=0x{x} x{:0>2}({s})=0x{x}", .{
@@ -114,6 +115,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
         }
 
         pub fn dumpCsrs(self: *Self) void {
+            log.debug("CSRs:", .{});
             log.debug("mstatus=0x{x} mtvec=0x{x} mepc=0x{x} mcause=0x{x}", .{
                 self.loadCsr(MSTATUS),
                 self.loadCsr(MTVEC),

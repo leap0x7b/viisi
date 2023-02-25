@@ -35,28 +35,28 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
                 .reader = reader,
                 .writer = writer,
             };
-            ret.uart[LSR - Bus.Mmio.Uart.base] |= LSR_TX;
 
+            ret.uart[LSR - Bus.Mmio.Uart.base] |= LSR_TX;
             ret.thread = try std.Thread.spawn(.{}, threadFn, .{&ret});
 
             return ret;
         }
 
         fn threadFn(self: *Self) void {
-            const byte = self.reader.reader().readByte() catch unreachable;
-            std.debug.print("yes", .{});
+            while (true) {
+                const byte = self.reader.reader().readByte() catch unreachable;
 
-            self.mutex.lock();
-            defer self.mutex.unlock();
+                self.mutex.lock();
+                defer self.mutex.unlock();
 
-            while ((self.uart[LSR - Bus.Mmio.Uart.base] & LSR_RX) == 1)
-                self.cond.wait(&self.mutex);
+                while ((self.uart[LSR - Bus.Mmio.Uart.base] & LSR_RX) == 1)
+                    self.cond.wait(&self.mutex);
 
-            self.uart[0] = byte;
-            self.interrupting.store(true, .Release);
+                self.uart[0] = byte;
+                self.interrupting.store(true, .Release);
 
-            self.uart[LSR - Bus.Mmio.Uart.base] |= LSR_RX;
-            std.debug.print("yes", .{});
+                self.uart[LSR - Bus.Mmio.Uart.base] |= LSR_RX;
+            }
         }
 
         pub fn load(self: *Self, comptime T: type, address: u64) Trap.Exception!u64 {
@@ -71,7 +71,7 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
                     self.uart[LSR - Bus.Mmio.Uart.base] &= ~LSR_RX;
                     break :blk @intCast(u64, self.uart[RHR - Bus.Mmio.Uart.base]);
                 },
-                else => 0,
+                else => @intCast(u64, self.uart[address - Bus.Mmio.Uart.base]),
             };
         }
 
@@ -80,7 +80,6 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
 
             switch (address) {
                 THR => {
-                    std.debug.print("{c}", .{@truncate(u8, value)});
                     self.writer.writer().print("{c}", .{@truncate(u8, value)}) catch return error.StoreAMOAccessFault;
                     self.writer.flush() catch return error.StoreAMOAccessFault;
                 },

@@ -4,3 +4,5 @@ license: MIT
 description: A RISC-V hobby computer inspired by old 80s/90s UNIX workstations
 root_dependencies:
   - src: git https://github.com/Hejsil/zig-clap
+    version: commit-6c9ca9025199b145c42a75d10cadb3f97879ee6d
+  - src: git https://github.com/xyaman/mibu
