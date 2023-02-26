@@ -2,6 +2,9 @@ const std = @import("std");
 const Bus = @import("bus.zig");
 const Trap = @import("trap.zig");
 
+/// The interrupt request of UART.
+pub const IRQ: u64 = 10;
+
 /// Recieve holding register (for input bytes).
 pub const RHR = Bus.Mmio.Uart.base;
 /// Transmit holding register (for output bytes).
@@ -88,13 +91,7 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
         }
 
         pub fn isInterrupting(self: *Self) bool {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            const interrupting = self.interrupting;
-            self.interrupting = false;
-
-            return interrupting;
+            return self.interrupting.swap(false, .Acquire);
         }
     };
 }

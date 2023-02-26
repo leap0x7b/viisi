@@ -1,9 +1,12 @@
 const std = @import("std");
 const Cpu = @import("../cpu.zig");
-const Bus = @import("../bus.zig");
+const bus = @import("../bus.zig");
 const Trap = @import("../trap.zig");
 
-pub fn emuTest(_code: []const u8, expected_regs: []const []const u64, expected_pc: u64) !void {
+fn emuTest(_code: []const u8, expected_regs: []const []const u64, expected_pc: u64) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
     var buffer = [_]u8{0} ** 1024;
     var stream = std.io.fixedBufferStream(&buffer);
 
@@ -14,10 +17,9 @@ pub fn emuTest(_code: []const u8, expected_regs: []const []const u64, expected_p
     std.mem.copy(u8, &code, _code);
 
     var cpu = try Cpu.init(reader, writer);
-    try cpu.init(&code, 1024 * 1024 * 256, std.testing.allocator);
+    try cpu.init(&code, 1024 * 1024 * 256, arena.allocator());
 
-    //while (cpu.pc - Bus.DRAM_BASE < code.len) {
-    while (true) {
+    while (cpu.pc - bus.DRAM_BASE < code.len) {
         const inst = cpu.fetch() catch |exception| blk: {
             Trap.handleTrap(exception, &cpu);
             if (Trap.isFatal(exception)) break;
@@ -28,9 +30,6 @@ pub fn emuTest(_code: []const u8, expected_regs: []const []const u64, expected_p
             Trap.handleTrap(exception, &cpu);
             if (Trap.isFatal(exception)) break;
         };
-        if (cpu.pc == 0) break;
-        //if (cpu.pc == expected_pc) break;
-        if (cpu.pc - Bus.DRAM_BASE > 1023) break;
     }
 
     for (expected_regs) |expected|
@@ -132,7 +131,7 @@ test "auipc" {
     try emuTest(&.{
         0x17, 0x28, 0x00, 0x00, // auipc x16, 2
     }, &.{
-        &.{ 16, 0x2000 + Bus.DRAM_BASE },
+        &.{ 16, 0x2000 + bus.DRAM_BASE },
     }, 0);
 }
 
@@ -272,5 +271,5 @@ test "beq" {
     }, &.{
         &.{ 16, 3 },
         &.{ 17, 3 },
-    }, Bus.DRAM_BASE - 20);
+    }, bus.DRAM_BASE - 20);
 }

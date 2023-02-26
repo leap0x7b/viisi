@@ -1,8 +1,13 @@
 const std = @import("std");
-const Trap = @import("trap.zig");
+const trap = @import("trap.zig");
 const bus = @import("bus.zig");
-const Uart = @import("uart.zig").Uart;
+const uart = @import("uart.zig");
+const Drive = @import("uart.zig");
+const Plic = @import("plic.zig");
 const log = std.log.scoped(.cpu);
+
+/// The page size (4 KiB) for the virtual dram system.
+const PAGE_SIZE: u64 = 0x1000;
 
 // Machine-level CSRs
 /// Hardware thread ID.
@@ -29,6 +34,16 @@ pub const MCAUSE = 0x342;
 pub const MTVAL = 0x343;
 /// Machine interrupt pending.
 pub const MIP = 0x344;
+
+/// MIP fields.
+pub const Mip = enum(u64) {
+    SSIP = 1 << 1,
+    MSIP = 1 << 3,
+    STIP = 1 << 5,
+    MTIP = 1 << 7,
+    SEIP = 1 << 9,
+    MEIP = 1 << 11,
+};
 
 // Supervisor-level CSRs.
 /// Supervisor status register.
@@ -57,11 +72,23 @@ pub const Mode = enum(u2) {
     Machine = 0b11,
 };
 
+/// Access type that is used in the virtual address translation process. It decides which exception
+/// should raises (InstructionPageFault, LoadPageFault or StoreAMOPageFault).
+pub const AccessType = enum {
+    /// Raises the exception InstructionPageFault. It is used for an instruction fetch.
+    Instruction,
+    /// Raises the exception LoadPageFault.
+    Load,
+    /// Raises the exception StoreAMOPageFault.
+    Store,
+};
+
 pub fn init(reader: anytype, writer: anytype) !Cpu(@TypeOf(reader), @TypeOf(writer)) {
     return .{
         .bus = .{
-            .uart = try Uart(@TypeOf(reader), @TypeOf(writer)).init(reader, writer),
+            .uart = try uart.Uart(@TypeOf(reader), @TypeOf(writer)).init(reader, writer),
             .dram = undefined,
+            .drive = undefined,
         },
     };
 }
@@ -75,14 +102,17 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
         mode: Mode = .Machine,
         bus: bus.Bus(reader, writer) = undefined,
         csrs: [4096]u64 = [_]u64{0} ** 4096,
+        enable_paging: bool = false,
+        page_table: u64 = 0,
 
-        pub fn init(self: *Self, code: []u8, comptime mem_size: usize, allocator: std.mem.Allocator) !void {
+        pub fn init(self: *Self, code: []u8, comptime mem_size: usize, disk: *std.fs.File, allocator: std.mem.Allocator) !void {
             var dram = try allocator.alloc(u8, mem_size);
             std.mem.copy(u8, dram, code);
             self.bus.dram = .{
                 .dram = dram,
                 .size = mem_size,
             };
+            self.bus.drive = .{ .disk = disk };
             self.regs[2] = bus.DRAM_BASE + mem_size;
         }
 
@@ -130,6 +160,133 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
             });
         }
 
+        pub fn checkPendingInterrupt(self: *Self) !?trap.Interrupt {
+            switch (self.mode) {
+                .Machine => if ((self.loadCsr(MSTATUS) >> 3) & 1 == 0) {
+                    return null;
+                },
+                .Supervisor => if ((self.loadCsr(SSTATUS) >> 3) & 1 == 0) {
+                    return null;
+                },
+                else => {},
+            }
+
+            var irq: u64 = 0;
+            if (self.bus.uart.isInterrupting()) {
+                irq = uart.IRQ;
+            } else if (self.bus.drive.isInterrupting()) {
+                try self.bus.accessDrive();
+                irq = Drive.IRQ;
+            }
+
+            if (irq != 0) {
+                try self.store(u32, Plic.SCLAIM, irq);
+                self.storeCsr(MIP, self.loadCsr(MIP) | @enumToInt(Mip.SEIP));
+            }
+
+            const pending = self.loadCsr(MIE) & self.loadCsr(MIP);
+
+            if ((pending & @enumToInt(Mip.MEIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.MEIP));
+                return .MachineExternal;
+            }
+            if ((pending & @enumToInt(Mip.MSIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.MSIP));
+                return .MachineSoftware;
+            }
+            if ((pending & @enumToInt(Mip.MTIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.MTIP));
+                return .MachineTimer;
+            }
+            if ((pending & @enumToInt(Mip.SEIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.SEIP));
+                return .SupervisorExternal;
+            }
+            if ((pending & @enumToInt(Mip.SSIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.SSIP));
+                return .SupervisorSoftware;
+            }
+            if ((pending & @enumToInt(Mip.STIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.STIP));
+                return .SupervisorTimer;
+            }
+
+            return null;
+        }
+
+        pub fn updatePaging(self: *Self, csr_address: u64) void {
+            if (csr_address != SATP) return;
+
+            self.page_table = (self.loadCsr(SATP) & ((1 << 44) - 1)) * PAGE_SIZE;
+            const mode = self.loadCsr(SATP) >> 60;
+
+            if (mode == 8)
+                self.enable_paging = true
+            else
+                self.enable_paging = false;
+        }
+
+        pub fn translate(self: *Self, address: u64, access_type: AccessType) trap.Exception!u64 {
+            if (!self.enable_paging) return address;
+
+            const levels = 3;
+            const vpn: [3]u64 = .{
+                (address >> 12) & 0x1ff,
+                (address >> 21) & 0x1ff,
+                (address >> 30) & 0x1ff,
+            };
+
+            var a = self.page_table;
+            var i: u64 = levels - 1;
+            var pte: u64 = 0;
+            while (true) {
+                pte = try self.load(u64, a + vpn[i] * 8);
+
+                const v = pte & 1;
+                const r = (pte >> 1) & 1;
+                const w = (pte >> 2) & 1;
+                const x = (pte >> 3) & 1;
+                if ((v == 0) or (r == 0 and w == 1))
+                    return switch (access_type) {
+                        .Instruction => error.InstructionPageFault,
+                        .Load => error.LoadPageFault,
+                        .Store => error.StoreAMOPageFault,
+                    };
+
+                if ((r == 1) or (x == 1)) break;
+                i -= 1;
+
+                const ppn = (pte >> 10) & 0xfffffffffff;
+                a = ppn * PAGE_SIZE;
+                if (i < 0)
+                    return switch (access_type) {
+                        .Instruction => error.InstructionPageFault,
+                        .Load => error.LoadPageFault,
+                        .Store => error.StoreAMOPageFault,
+                    };
+            }
+
+            const ppn: [3]u64 = .{
+                (pte >> 10) & 0x1ff,
+                (pte >> 19) & 0x1ff,
+                (pte >> 28) & 0x3ffffff,
+            };
+
+            const offset = address & 0xfff;
+            return switch (i) {
+                0 => blk: {
+                    const _ppn = (pte >> 10) & 0xfffffffffff;
+                    break :blk (_ppn << 12) | offset;
+                },
+                1, 2 => (ppn[2] << 30) | (ppn[1] << 21) | (vpn[0] << 12) | offset,
+                else => switch (access_type) {
+                    .Instruction => error.InstructionPageFault,
+                    .Load => error.LoadPageFault,
+                    .Store => error.StoreAMOPageFault,
+                },
+            };
+        }
+
         pub fn loadCsr(self: *Self, address: u64) u64 {
             return switch (address) {
                 SIE => self.csrs[MIE] & self.csrs[MIDELEG],
@@ -144,11 +301,22 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
             }
         }
 
-        pub fn fetch(self: *Self) Trap.Exception!u64 {
-            return self.bus.load(u32, self.pc) catch error.InstructionAccessFault;
+        pub fn load(self: *Self, comptime T: type, address: u64) trap.Exception!u64 {
+            const addr = try self.translate(address, .Load);
+            return self.bus.load(T, addr);
         }
 
-        pub fn execute(self: *Self, inst: u64) Trap.Exception!void {
+        pub fn store(self: *Self, comptime T: type, address: u64, value: u64) trap.Exception!void {
+            const addr = try self.translate(address, .Load);
+            return self.bus.store(T, addr, value);
+        }
+
+        pub fn fetch(self: *Self) trap.Exception!u64 {
+            const pc = try self.translate(self.pc, .Instruction);
+            return self.bus.load(u32, pc) catch error.InstructionAccessFault;
+        }
+
+        pub fn execute(self: *Self, inst: u64) trap.Exception!void {
             const opcode = inst & 0x7f;
             const rd = (inst >> 7) & 0x1f;
             const rs1 = (inst >> 15) & 0x1f;
@@ -168,32 +336,43 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     self.regs[rd] = switch (funct3) {
                         // lb
                         0 => blk: {
-                            const val = try self.bus.load(u8, addr);
+                            const val = try self.load(u8, addr);
                             break :blk @bitCast(u64, @as(i64, @bitCast(i8, @truncate(u8, val))));
                         },
                         // lh
                         1 => blk: {
-                            const val = try self.bus.load(u16, addr);
+                            const val = try self.load(u16, addr);
                             break :blk @bitCast(u64, @as(i64, @bitCast(i16, @truncate(u16, val))));
                         },
                         // lw
                         2 => blk: {
-                            const val = try self.bus.load(u32, addr);
+                            const val = try self.load(u32, addr);
                             break :blk @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, val))));
                         },
                         // ld
-                        3 => try self.bus.load(u64, addr),
+                        3 => try self.load(u64, addr),
                         // lbu
-                        4 => try self.bus.load(u8, addr),
+                        4 => try self.load(u8, addr),
                         // lhu
-                        5 => try self.bus.load(u16, addr),
+                        5 => try self.load(u16, addr),
                         // lwu
-                        6 => try self.bus.load(u32, addr),
+                        6 => try self.load(u32, addr),
                         else => {
                             log.err("Unimplemented opcode: 0x{x} (funct3: 0x{x}, funct7: 0x{x})", .{ opcode, funct3, funct7 });
                             return error.IllegalInstruction;
                         },
                     };
+                },
+                0x0f => {
+                    switch (funct3) {
+                        // fence(.i)
+                        // Do nothing for now.
+                        0, 1 => {},
+                        else => {
+                            log.err("Unimplemented opcode: 0x{x} (funct3: 0x{x}, funct7: 0x{x})", .{ opcode, funct3, funct7 });
+                            return error.IllegalInstruction;
+                        },
+                    }
                 },
                 0x13 => {
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfff00000))) >> 20);
@@ -266,13 +445,13 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
 
                     switch (funct3) {
                         // sb
-                        0 => try self.bus.store(u8, addr, self.regs[rs2]),
+                        0 => try self.store(u8, addr, self.regs[rs2]),
                         // sh
-                        1 => try self.bus.store(u16, addr, self.regs[rs2]),
+                        1 => try self.store(u16, addr, self.regs[rs2]),
                         // sw
-                        2 => try self.bus.store(u32, addr, self.regs[rs2]),
+                        2 => try self.store(u32, addr, self.regs[rs2]),
                         // sd
-                        3 => try self.bus.store(u64, addr, self.regs[rs2]),
+                        3 => try self.store(u64, addr, self.regs[rs2]),
                         else => {
                             log.err("Unimplemented opcode: 0x{x} (funct3: 0x{x}, funct7: 0x{x})", .{ opcode, funct3, funct7 });
                             return error.IllegalInstruction;
@@ -294,14 +473,14 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         0 => switch (funct3) {
                             // amoadd.w
                             2 => blk: {
-                                const _rs1 = try self.bus.load(u32, self.regs[rs1]);
-                                try self.bus.store(u32, self.regs[rs1], _rs1 + self.regs[rs2]);
+                                const _rs1 = try self.load(u32, self.regs[rs1]);
+                                try self.store(u32, self.regs[rs1], _rs1 + self.regs[rs2]);
                                 break :blk _rs1;
                             },
                             // amoadd.d
                             3 => blk: {
-                                const _rs1 = try self.bus.load(u64, self.regs[rs1]);
-                                try self.bus.store(u64, self.regs[rs1], _rs1 + self.regs[rs2]);
+                                const _rs1 = try self.load(u64, self.regs[rs1]);
+                                try self.store(u64, self.regs[rs1], _rs1 + self.regs[rs2]);
                                 break :blk _rs1;
                             },
                             else => {
@@ -312,14 +491,14 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         1 => switch (funct3) {
                             // amoswap.w
                             2 => blk: {
-                                const _rs1 = try self.bus.load(u32, self.regs[rs1]);
-                                try self.bus.store(u32, self.regs[rs1], self.regs[rs2]);
+                                const _rs1 = try self.load(u32, self.regs[rs1]);
+                                try self.store(u32, self.regs[rs1], self.regs[rs2]);
                                 break :blk _rs1;
                             },
                             // amoadd.d
                             3 => blk: {
-                                const _rs1 = try self.bus.load(u64, self.regs[rs1]);
-                                try self.bus.store(u64, self.regs[rs1], self.regs[rs2]);
+                                const _rs1 = try self.load(u64, self.regs[rs1]);
+                                try self.store(u64, self.regs[rs1], self.regs[rs2]);
                                 break :blk _rs1;
                             },
                             else => {
@@ -550,7 +729,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     const pc = self.pc;
 
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfff00000))) >> 20);
-                    self.pc = (self.regs[rs1] + imm) & ~@intCast(u64, 1);
+                    self.pc = (self.regs[rs1] +% imm) & ~@intCast(u64, 1);
 
                     self.regs[rd] = pc;
                 },
@@ -567,7 +746,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     self.pc = (self.pc +% imm) - 4;
                 },
                 0x73 => {
-                    const csr_addr = (inst & 0xfff00000) >> 20;
+                    const csr_address = (inst & 0xfff00000) >> 20;
 
                     switch (funct3) {
                         0 => switch (rs2) {
@@ -628,38 +807,44 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         },
                         // csrrw
                         1 => {
-                            const csr = self.loadCsr(csr_addr);
-                            self.storeCsr(csr_addr, self.regs[rs1]);
+                            const csr = self.loadCsr(csr_address);
+                            self.storeCsr(csr_address, self.regs[rs1]);
                             self.regs[rd] = csr;
+                            self.updatePaging(csr_address);
                         },
                         // csrrs
                         2 => {
-                            const csr = self.loadCsr(csr_addr);
-                            self.storeCsr(csr_addr, csr | self.regs[rs1]);
+                            const csr = self.loadCsr(csr_address);
+                            self.storeCsr(csr_address, csr | self.regs[rs1]);
                             self.regs[rd] = csr;
+                            self.updatePaging(csr_address);
                         },
                         // csrrc
                         3 => {
-                            const csr = self.loadCsr(csr_addr);
-                            self.storeCsr(csr_addr, csr & ~self.regs[rs1]);
+                            const csr = self.loadCsr(csr_address);
+                            self.storeCsr(csr_address, csr & ~self.regs[rs1]);
                             self.regs[rd] = csr;
+                            self.updatePaging(csr_address);
                         },
                         // csrrwi
                         5 => {
-                            self.regs[rd] = self.loadCsr(csr_addr);
-                            self.storeCsr(csr_addr, rs1);
+                            self.regs[rd] = self.loadCsr(csr_address);
+                            self.storeCsr(csr_address, rs1);
+                            self.updatePaging(csr_address);
                         },
                         // csrrsi
                         6 => {
-                            const csr = self.loadCsr(csr_addr);
-                            self.storeCsr(csr_addr, csr | rs1);
+                            const csr = self.loadCsr(csr_address);
+                            self.storeCsr(csr_address, csr | rs1);
                             self.regs[rd] = csr;
+                            self.updatePaging(csr_address);
                         },
                         // csrrci
                         7 => {
-                            const csr = self.loadCsr(csr_addr);
-                            self.storeCsr(csr_addr, csr & ~rs1);
+                            const csr = self.loadCsr(csr_address);
+                            self.storeCsr(csr_address, csr & ~rs1);
                             self.regs[rd] = csr;
+                            self.updatePaging(csr_address);
                         },
                         else => {
                             log.err("Unimplemented opcode: 0x{x} (funct3: 0x{x}, funct7: 0x{x})", .{ opcode, funct3, funct7 });

@@ -16,7 +16,9 @@ It's currently very bare bones right now, but it does have an almost full RV64IM
     - [X] Zicsr - Control and status register
     - [ ] Zifencei - Load/store fence
   - [ ] Pass all tests in [riscv-tests](https://github.com/riscv/riscv-tests)
-- [ ] Other actual stuff
+- [X] UART
+- [X] Disk drive
+- [ ] Framebuffer
 
 ## Credits
 - [rvemu-for-book](https://github.com/d0iasm/rvemu-for-book) for test files and RV64 emulator implementation.
