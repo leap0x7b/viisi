@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img alt="Viisi" src="./assets/logo.png" width="256px">
+  <img alt="Viisi" src="./assets/logo.png" width="360px">
 </h1>
 <p align="center">
   A RISC-V hobby computer inspired by old 80s and 90s UNIX workstations.
