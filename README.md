@@ -1,5 +1,9 @@
-# viisi
-A RISC-V hobby computer inspired by old 80s and 90s UNIX workstations.
+<h1 align="center">
+  <img alt="Viisi" src="./assets/logo.png" width="256px">
+</h1>
+<p align="center">
+  A RISC-V hobby computer inspired by old 80s and 90s UNIX workstations.
+</p>
 
 It's currently very bare bones right now, but it does have an almost full RV64IM(A) emulator. You can run one of the test files with `zig build run -- tests/<file>.bin`.
 
