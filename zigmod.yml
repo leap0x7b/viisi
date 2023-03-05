@@ -6,3 +6,8 @@ root_dependencies:
   - src: git https://github.com/Hejsil/zig-clap
     version: commit-6c9ca9025199b145c42a75d10cadb3f97879ee6d
   - src: git https://github.com/xyaman/mibu
+build_dependencies:
+  - src: git https://github.com/MasterQ32/SDL.zig
+    version: commit-2ae2791a3012e93bab3b9812bc886248baf7ab41
+    name: sdl-sdk
+    main: Sdk.zig

@@ -52,10 +52,13 @@ pub fn build(b: *std.build.Builder) void {
     exe_options.addOption([:0]const u8, "version", b.allocator.dupeZ(u8, version) catch "0.1.0");
 
     const exe = b.addExecutable("viisi", "src/main.zig");
+    const sdk = deps.imports.sdl_sdk.init(b);
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.addOptions("build_options", exe_options);
     deps.addAllTo(exe);
+    exe.addPackage(sdk.getWrapperPackage("sdl2"));
+    exe.linkSystemLibrary("sdl2");
     exe.linkLibC();
     exe.install();
 

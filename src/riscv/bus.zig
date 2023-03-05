@@ -16,6 +16,7 @@ pub const Mmio = struct {
 
     Reserved: Entry,
     Fdt: Entry,
+    Rtc: Entry,
     Nvram: Entry,
     Clint: Entry,
     Plic: Entry,
@@ -23,6 +24,7 @@ pub const Mmio = struct {
     Framebuffer: Entry,
     Drive: Entry,
     Keyboard: Entry,
+    Mouse: Entry,
 }{
     .Reserved = .{
         .base = 0x0,
@@ -32,6 +34,11 @@ pub const Mmio = struct {
     .Fdt = .{
         .base = 0x1000,
         .size = 0xf0000,
+    },
+
+    .Rtc = .{
+        .base = 0x101000,
+        .size = 0x1000,
     },
 
     .Nvram = .{
@@ -56,7 +63,7 @@ pub const Mmio = struct {
 
     .Framebuffer = .{
         .base = 0x10001000,
-        .size = 0xc0000, // 1024x768 (TODO: try to make a framebuffer with a redefinable resolution if possible)
+        .size = 0x1d4c00, // 800x600x32 (TODO: try to make a framebuffer with a redefinable resolution and bit depth if possible)
     },
 
     .Drive = .{
@@ -66,7 +73,12 @@ pub const Mmio = struct {
 
     .Keyboard = .{
         .base = 0x20001000,
-        .size = 1,
+        .size = 0x100,
+    },
+
+    .Mouse = .{
+        .base = 0x20002000,
+        .size = 0x100,
     },
 };
 
@@ -81,6 +93,9 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
         dram: Dram,
 
         pub fn load(self: *Self, comptime T: type, address: u64) trap.Exception!u64 {
+            if (Mmio.Rtc.base <= address and address < Mmio.Rtc.base + Mmio.Rtc.size)
+                return self.clint.load(T, address);
+
             if (Mmio.Clint.base <= address and address < Mmio.Clint.base + Mmio.Clint.size)
                 return self.clint.load(T, address);
 
@@ -102,6 +117,9 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
         }
 
         pub fn store(self: *Self, comptime T: type, address: u64, value: u64) trap.Exception!void {
+            if (Mmio.Rtc.base <= address and address < Mmio.Rtc.base + Mmio.Rtc.size)
+                return self.clint.store(T, address, value);
+
             if (Mmio.Clint.base <= address and address < Mmio.Clint.base + Mmio.Clint.size)
                 return self.clint.store(T, address, value);
 

@@ -3,6 +3,7 @@ const build_options = @import("build_options");
 const clap = @import("clap");
 const term = @import("term.zig");
 const riscv = @import("riscv.zig");
+//const sdl2 = @import("sdl2");
 
 pub const std_options = struct {
     pub const logFn = log;
@@ -33,6 +34,7 @@ pub fn main() !void {
         \\-V, --version        Output version information and exit.
         \\-d, --drive <FILE>   Insert and boot from a disk drive.
         \\-b, --bios <FILE>    Boot from the specified BIOS ROM.
+        //\\-H, --headless       Boot without a display output.
     );
 
     const parsers = comptime .{
@@ -78,10 +80,35 @@ pub fn main() !void {
         //var raw_mode = try term.enableRawMode(stdin.handle, .Blocking);
         //defer raw_mode.disableRawMode() catch unreachable;
 
+        //var window: ?sdl2.Window = null;
+        //var renderer: ?sdl2.Renderer = null;
+
+        //if (!res.args.headless) {
+        //    try sdl2.init(.{
+        //        .video = true,
+        //        .events = true,
+        //        .audio = true,
+        //    });
+        //    defer sdl2.quit();
+
+        //    window = try sdl2.createWindow(
+        //        "Viisi",
+        //        .{ .centered = {} },
+        //        .{ .centered = {} },
+        //        640,
+        //        480,
+        //        .{ .vis = .shown },
+        //    );
+        //    defer window.destroy();
+
+        //    renderer = try sdl2.createRenderer(window, null, .{ .accelerated = true });
+        //    defer renderer.destroy();
+        //}
+
         var cpu = try riscv.cpu.init(buffered_stdin, buffered_stdout);
         try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, disk, arena.allocator());
 
-        while (true) {
+        cpu_loop: while (true) {
             const inst = cpu.fetch() catch |exception| blk: {
                 try riscv.trap.handleTrap(exception, &cpu);
                 if (riscv.trap.isFatal(exception)) break;
@@ -90,14 +117,30 @@ pub fn main() !void {
             cpu.pc += 4;
             cpu.execute(inst) catch |exception| {
                 try riscv.trap.handleTrap(exception, &cpu);
-                if (riscv.trap.isFatal(exception)) break;
+                if (riscv.trap.isFatal(exception)) break :cpu_loop;
             };
 
             if (try cpu.checkPendingInterrupt()) |interrupt|
                 try riscv.trap.handleTrap(interrupt, &cpu);
 
-            if (cpu.pc == 0) break;
+            if (cpu.pc == 0) break :cpu_loop;
         }
+
+        //if (!res.args.headless) {
+        //    fb_loop: while (true) {
+        //        while (sdl2.pollEvent()) |ev| {
+        //            switch (ev) {
+        //                .quit => break :fb_loop,
+        //                else => {},
+        //            }
+        //        }
+
+        //        try renderer.setColorRGB(0xF7, 0xA4, 0x1D);
+        //        try renderer.clear();
+
+        //        renderer.present();
+        //    }
+        //}
 
         //cpu.dumpRegisters();
         //cpu.dumpCsrs();
