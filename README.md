@@ -5,7 +5,7 @@
   A RISC-V hobby computer inspired by old 80s and 90s UNIX workstations.
 </p>
 
-It's currently very bare bones right now, but it does have an almost full RV64IM(A) emulator. You can run one of the test files with `zig build run -- --drive tests/dummy-drive.img --kernel tests/<file>.bin`.
+It's currently very bare bones right now, but it does have an almost full RV64IM(A) emulator. You can run one of the test files with `zig build run -- --kernel tests/<file>.bin`.
 
 Currently only works with Zig version before 0.11.0-dev.1501+885d69689 (which is the latest version of Zig nightly that doesn't use the new build system), but a version of Viisi that uses the new build system.
 
@@ -23,11 +23,13 @@ Currently only works with Zig version before 0.11.0-dev.1501+885d69689 (which is
     - [ ] Zifencei - Load/store fence
   - [ ] Pass all tests in [riscv-tests](https://github.com/riscv/riscv-tests)
 - [X] UART
-- [X] Disk drive
+- [X] Basic disk drive controller
+- [ ] RTC
 - [ ] Framebuffer
+- [ ] Networking
 
-## Credits
+## Acknowledgements
 - [rvemu-for-book](https://github.com/d0iasm/rvemu-for-book) for test files and RV64 emulator implementation.
 
 ## License
-This project is open source and is licensed under the MIT license. See the [LICENSE](LICENSE) file for more information.
+This project is open source and is licensed under the MIT license. See the [LICENSE](LICENSE) file for more informations.

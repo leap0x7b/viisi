@@ -4,7 +4,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("root");
 
-const system = if (@hasDecl(root, "os") and root.os != @This())
+const system = if (@hasDecl(root, "os") and root.os != std.os.system)
     root.os.system
 else switch (builtin.os.tag) {
     .linux => std.os.linux,

@@ -15,7 +15,8 @@ pub const Mmio = struct {
     };
 
     Reserved: Entry,
-    BootRom: Entry,
+    Fdt: Entry,
+    Nvram: Entry,
     Clint: Entry,
     Plic: Entry,
     Uart: Entry,
@@ -28,8 +29,13 @@ pub const Mmio = struct {
         .size = 0xfff,
     },
 
-    .BootRom = .{
+    .Fdt = .{
         .base = 0x1000,
+        .size = 0xf0000,
+    },
+
+    .Nvram = .{
+        .base = 0x1000000,
         .size = 0xfffff, // 1 MiB
     },
 
@@ -71,7 +77,7 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
         clint: Clint = .{},
         plic: Plic = .{},
         uart: Uart(reader, writer),
-        drive: Drive,
+        drive: ?Drive,
         dram: Dram,
 
         pub fn load(self: *Self, comptime T: type, address: u64) trap.Exception!u64 {
@@ -84,8 +90,10 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
             if (Mmio.Uart.base <= address and address < Mmio.Uart.base + Mmio.Uart.size)
                 return self.uart.load(T, address);
 
-            if (Mmio.Drive.base <= address and address < Mmio.Drive.base + Mmio.Drive.size)
-                return self.drive.load(T, address);
+            if (self.drive != null) {
+                if (Mmio.Drive.base <= address and address < Mmio.Drive.base + Mmio.Drive.size)
+                    return self.drive.?.load(T, address);
+            }
 
             if (DRAM_BASE <= address)
                 return self.dram.load(T, address);
@@ -103,8 +111,10 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
             if (Mmio.Uart.base <= address and address < Mmio.Uart.base + Mmio.Uart.size)
                 return self.uart.store(T, address, value);
 
-            if (Mmio.Drive.base <= address and address < Mmio.Drive.base + Mmio.Drive.size)
-                return self.drive.store(T, address, value);
+            if (self.drive != null) {
+                if (Mmio.Drive.base <= address and address < Mmio.Drive.base + Mmio.Drive.size)
+                    return self.drive.?.store(T, address, value);
+            }
 
             if (DRAM_BASE <= address)
                 return self.dram.store(T, address, value);
@@ -113,31 +123,33 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
         }
 
         pub fn accessDrive(self: *Self) trap.Exception!void {
-            const direction = try self.load(u64, Drive.DIRECTION);
-            const address = try self.load(u64, Drive.BUFFER_ADDRESS);
-            const length = try self.load(u64, Drive.BUFFER_LENGTH);
-            const sector = try self.load(u64, Drive.SECTOR);
+            if (self.drive != null) {
+                const direction = try self.load(u64, Drive.DIRECTION);
+                const address = try self.load(u64, Drive.BUFFER_ADDRESS);
+                const length = try self.load(u64, Drive.BUFFER_LENGTH);
+                const sector = try self.load(u64, Drive.SECTOR);
 
-            if (direction == 1) {
-                var i: u64 = 0;
-                while (i < length) : (i += 1) {
-                    const data = try self.load(u8, address + i);
-                    self.drive.write(sector * 512 + i, @truncate(u8, data)) catch |err| {
-                        try self.store(u64, Drive.STATUS, @enumToInt(Drive.errorToStatus(err)));
-                        break;
-                    };
+                if (direction == 1) {
+                    var i: u64 = 0;
+                    while (i < length) : (i += 1) {
+                        const data = try self.load(u8, address + i);
+                        self.drive.?.write(sector * 512 + i, @truncate(u8, data)) catch |err| {
+                            try self.store(u64, Drive.STATUS, @enumToInt(Drive.errorToStatus(err)));
+                            break;
+                        };
+                    }
+                } else {
+                    var i: u64 = 0;
+                    while (i < length) : (i += 1) {
+                        const data = self.drive.?.read(sector * 512 + i) catch |err| {
+                            try self.store(u64, Drive.STATUS, @enumToInt(Drive.errorToStatus(err)));
+                            break;
+                        };
+                        try self.store(u8, address + i, data);
+                    }
                 }
-            } else {
-                var i: u64 = 0;
-                while (i < length) : (i += 1) {
-                    const data = self.drive.read(sector * 512 + i) catch |err| {
-                        try self.store(u64, Drive.STATUS, @enumToInt(Drive.errorToStatus(err)));
-                        break;
-                    };
-                    try self.store(u8, address + i, data);
-                }
+                try self.store(u64, Drive.STATUS, @enumToInt(Drive.Status.Success));
             }
-            try self.store(u64, Drive.STATUS, @enumToInt(Drive.Status.Success));
         }
     };
 }

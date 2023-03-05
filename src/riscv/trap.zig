@@ -125,6 +125,8 @@ pub fn handleException(exception: Exception, cpu: anytype) void {
 }
 
 pub fn handleInterrupt(interrupt: Interrupt, cpu: anytype) void {
+    cpu.idle = false;
+
     const interrupt_pc = cpu.pc - 4;
     const previous_mode = cpu.mode;
 

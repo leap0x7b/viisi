@@ -88,7 +88,7 @@ pub fn init(reader: anytype, writer: anytype) !Cpu(@TypeOf(reader), @TypeOf(writ
         .bus = .{
             .uart = try uart.Uart(@TypeOf(reader), @TypeOf(writer)).init(reader, writer),
             .dram = undefined,
-            .drive = undefined,
+            .drive = null,
         },
     };
 }
@@ -102,17 +102,19 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
         mode: Mode = .Machine,
         bus: bus.Bus(reader, writer) = undefined,
         csrs: [4096]u64 = [_]u64{0} ** 4096,
+        idle: bool = false,
         enable_paging: bool = false,
         page_table: u64 = 0,
 
-        pub fn init(self: *Self, code: []u8, comptime mem_size: usize, disk: *std.fs.File, allocator: std.mem.Allocator) !void {
+        pub fn init(self: *Self, code: []u8, comptime mem_size: usize, disk: ?*std.fs.File, allocator: std.mem.Allocator) !void {
             var dram = try allocator.alloc(u8, mem_size);
             std.mem.copy(u8, dram, code);
             self.bus.dram = .{
                 .dram = dram,
                 .size = mem_size,
             };
-            self.bus.drive = .{ .disk = disk };
+            if (disk) |d|
+                self.bus.drive = .{ .disk = d };
             self.regs[2] = bus.DRAM_BASE + mem_size;
         }
 
@@ -174,9 +176,13 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
             var irq: u64 = 0;
             if (self.bus.uart.isInterrupting()) {
                 irq = uart.IRQ;
-            } else if (self.bus.drive.isInterrupting()) {
-                try self.bus.accessDrive();
-                irq = Drive.IRQ;
+            }
+
+            if (self.bus.drive != null) {
+                if (self.bus.drive.?.isInterrupting()) {
+                    try self.bus.accessDrive();
+                    irq = Drive.IRQ;
+                }
             }
 
             if (irq != 0) {
@@ -317,6 +323,8 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
         }
 
         pub fn execute(self: *Self, inst: u64) trap.Exception!void {
+            if (self.idle) return;
+
             const opcode = inst & 0x7f;
             const rd = (inst >> 7) & 0x1f;
             const rs1 = (inst >> 15) & 0x1f;
@@ -543,7 +551,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 else => blk: {
                                     const dividend = @bitCast(i64, self.regs[rs1]);
                                     const divisor = @bitCast(i64, self.regs[rs2]);
-                                    break :blk @bitCast(u64, @divExact(dividend, divisor));
+                                    break :blk @bitCast(u64, @divTrunc(dividend, divisor));
                                 },
                             },
                             else => {
@@ -579,7 +587,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 else => blk: {
                                     const dividend = @bitCast(i64, self.regs[rs1]);
                                     const divisor = @bitCast(i64, self.regs[rs2]);
-                                    break :blk @bitCast(u64, @rem(dividend, divisor));
+                                    break :blk @bitCast(u64, @mod(dividend, divisor));
                                 },
                             },
                             else => {
@@ -635,7 +643,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 else => blk: {
                                     const dividend = @bitCast(i32, @truncate(u32, self.regs[rs1]));
                                     const divisor = @bitCast(i32, @truncate(u32, self.regs[rs2]));
-                                    break :blk @intCast(u64, @divExact(dividend, divisor));
+                                    break :blk @intCast(u64, @divTrunc(dividend, divisor));
                                 },
                             },
                             else => {
@@ -669,7 +677,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 else => blk: {
                                     const dividend = @bitCast(i32, @truncate(u32, self.regs[rs1]));
                                     const divisor = @bitCast(i32, @truncate(u32, self.regs[rs2]));
-                                    break :blk @intCast(u64, @rem(dividend, divisor));
+                                    break :blk @intCast(u64, @mod(dividend, divisor));
                                 },
                             },
                             else => {
@@ -736,7 +744,6 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 // jal
                 0x6f => {
                     self.regs[rd] = self.pc;
-
                     // zig fmt: off
                     const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 11)
                         | (inst & 0xff000)
@@ -747,7 +754,6 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 },
                 0x73 => {
                     const csr_address = (inst & 0xfff00000) >> 20;
-
                     switch (funct3) {
                         0 => switch (rs2) {
                             // ecall
@@ -794,6 +800,11 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                     self.storeCsr(MSTATUS, self.loadCsr(MSTATUS) | (1 << 7));
                                     self.storeCsr(MSTATUS, self.loadCsr(MSTATUS) & ~@intCast(u64, 0b11 << 11));
                                 },
+                                else => {},
+                            },
+                            5 => switch (funct7) {
+                                // wfi
+                                0x8 => self.idle = true,
                                 else => {},
                             },
                             else => {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const Cpu = @import("../cpu.zig");
 const bus = @import("../bus.zig");
-const Trap = @import("../trap.zig");
+const trap = @import("../trap.zig");
 
 fn emuTest(filename: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -16,21 +16,27 @@ fn emuTest(filename: []const u8) !void {
     const file = try std.fs.cwd().openFile(filename, .{ .mode = .read_only });
     defer file.close();
 
-    var cpu = try Cpu.init(reader, writer);
-    try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, arena.allocator());
+    var disk = try std.fs.cwd().openFile("/dev/null", .{ .mode = .read_write });
+    defer disk.close();
 
-    const stat = try file.stat();
-    while (cpu.pc - bus.DRAM_BASE < stat.size) {
+    var cpu = try Cpu.init(reader, writer);
+    try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, &disk, arena.allocator());
+
+    while (true) {
         const inst = cpu.fetch() catch |exception| blk: {
-            Trap.handleTrap(exception, &cpu);
-            if (Trap.isFatal(exception)) break;
+            try trap.handleTrap(exception, &cpu);
+            if (trap.isFatal(exception)) break;
             break :blk 0;
         };
         cpu.pc += 4;
         cpu.execute(inst) catch |exception| {
-            Trap.handleTrap(exception, &cpu);
-            if (Trap.isFatal(exception)) break;
+            try trap.handleTrap(exception, &cpu);
+            if (trap.isFatal(exception)) break;
         };
+
+        if (try cpu.checkPendingInterrupt()) |interrupt|
+            try trap.handleTrap(interrupt, &cpu);
+
         if (cpu.pc == 0) break;
     }
 

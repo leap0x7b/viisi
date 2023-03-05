@@ -29,10 +29,10 @@ pub fn main() !void {
     const stderr = std.io.getStdErr();
 
     const params = comptime clap.parseParamsComptime(
-        \\-h, --help           Display this help and exit.
+        \\-h, --help           Display this help message and exit.
         \\-V, --version        Output version information and exit.
-        \\-d, --drive <FILE>   Insert a disk drive.
-        \\-k, --kernel <FILE>  Boot with the specified kernel.
+        \\-d, --drive <FILE>   Insert and boot from a disk drive.
+        \\-b, --bios <FILE>    Boot from the specified BIOS ROM.
     );
 
     const parsers = comptime .{
@@ -43,6 +43,7 @@ pub fn main() !void {
     var res = clap.parse(clap.Help, &params, parsers, .{ .diagnostic = &diag }) catch |err| {
         std.debug.print("viisi: ", .{});
         diag.report(stderr.writer(), err) catch {};
+        std.debug.print("\n", .{});
         try usage(&params, stderr.writer());
         return std.debug.print("Try `viisi --help` for more information.\n", .{});
     };
@@ -60,46 +61,47 @@ pub fn main() !void {
             \\
         , .{build_options.version});
 
-    if (res.args.kernel) |kernel|
+    if (res.args.bios) |bios| {
+        const file = try std.fs.cwd().openFile(bios, .{ .mode = .read_only });
+        defer file.close();
+
+        var disk: ?*std.fs.File = null;
         if (res.args.drive) |drive| {
-            const file = try std.fs.cwd().openFile(kernel, .{ .mode = .read_only });
-            defer file.close();
+            var _disk = try std.fs.cwd().openFile(drive, .{ .mode = .read_write });
+            defer _disk.close();
+            disk = &_disk;
+        }
 
-            var disk = try std.fs.cwd().openFile(drive, .{ .mode = .read_write });
-            defer disk.close();
+        const buffered_stdin = std.io.bufferedReader(stdin.reader());
+        const buffered_stdout = std.io.bufferedWriter(stdout.writer());
 
-            const buffered_stdin = std.io.bufferedReader(stdin.reader());
-            const buffered_stdout = std.io.bufferedWriter(stdout.writer());
+        //var raw_mode = try term.enableRawMode(stdin.handle, .Blocking);
+        //defer raw_mode.disableRawMode() catch unreachable;
 
-            //var raw_mode = try term.enableRawMode(stdin.handle, .Blocking);
-            //defer raw_mode.disableRawMode() catch unreachable;
+        var cpu = try riscv.cpu.init(buffered_stdin, buffered_stdout);
+        try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, disk, arena.allocator());
 
-            var cpu = try riscv.cpu.init(buffered_stdin, buffered_stdout);
-            try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, &disk, arena.allocator());
+        while (true) {
+            const inst = cpu.fetch() catch |exception| blk: {
+                try riscv.trap.handleTrap(exception, &cpu);
+                if (riscv.trap.isFatal(exception)) break;
+                break :blk 0;
+            };
+            cpu.pc += 4;
+            cpu.execute(inst) catch |exception| {
+                try riscv.trap.handleTrap(exception, &cpu);
+                if (riscv.trap.isFatal(exception)) break;
+            };
 
-            //const stat = try file.stat();
-            //while (cpu.pc - riscv.bus.DRAM_BASE < stat.size) {
-            while (true) {
-                const inst = cpu.fetch() catch |exception| blk: {
-                    try riscv.trap.handleTrap(exception, &cpu);
-                    if (riscv.trap.isFatal(exception)) break;
-                    break :blk 0;
-                };
-                cpu.pc += 4;
-                cpu.execute(inst) catch |exception| {
-                    try riscv.trap.handleTrap(exception, &cpu);
-                    if (riscv.trap.isFatal(exception)) break;
-                };
+            if (try cpu.checkPendingInterrupt()) |interrupt|
+                try riscv.trap.handleTrap(interrupt, &cpu);
 
-                if (try cpu.checkPendingInterrupt()) |interrupt|
-                    try riscv.trap.handleTrap(interrupt, &cpu);
+            if (cpu.pc == 0) break;
+        }
 
-                if (cpu.pc == 0) break;
-            }
-
-            cpu.dumpRegisters();
-            cpu.dumpCsrs();
-        };
+        //cpu.dumpRegisters();
+        //cpu.dumpCsrs();
+    }
 }
 
 fn usage(params: []const clap.Param(clap.Help), writer: anytype) !void {
