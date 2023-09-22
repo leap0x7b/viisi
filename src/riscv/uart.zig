@@ -72,9 +72,9 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
                 RHR => blk: {
                     self.cond.broadcast();
                     self.uart[LSR - Bus.Mmio.Uart.base] &= ~LSR_RX;
-                    break :blk @intCast(u64, self.uart[RHR - Bus.Mmio.Uart.base]);
+                    break :blk @intCast(self.uart[RHR - Bus.Mmio.Uart.base]);
                 },
-                else => @intCast(u64, self.uart[address - Bus.Mmio.Uart.base]),
+                else => @intCast(self.uart[address - Bus.Mmio.Uart.base]),
             };
         }
 
@@ -83,10 +83,10 @@ pub fn Uart(comptime reader_type: anytype, comptime writer_type: anytype) type {
 
             switch (address) {
                 THR => {
-                    self.writer.writer().print("{c}", .{@truncate(u8, value)}) catch return error.StoreAMOAccessFault;
+                    self.writer.writer().print("{c}", .{@as(u8, @truncate(value))}) catch return error.StoreAMOAccessFault;
                     self.writer.flush() catch return error.StoreAMOAccessFault;
                 },
-                else => self.uart[(address - Bus.Mmio.Uart.base)] = @truncate(u8, value),
+                else => self.uart[(address - Bus.Mmio.Uart.base)] = @as(u8, @truncate(value)),
             }
         }
 

@@ -151,8 +151,8 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
                     var i: u64 = 0;
                     while (i < length) : (i += 1) {
                         const data = try self.load(u8, address + i);
-                        self.drive.?.write(sector * 512 + i, @truncate(u8, data)) catch |err| {
-                            try self.store(u64, Drive.STATUS, @enumToInt(Drive.errorToStatus(err)));
+                        self.drive.?.write(sector * 512 + i, @as(u8, @truncate(data))) catch |err| {
+                            try self.store(u64, Drive.STATUS, @intFromEnum(Drive.errorToStatus(err)));
                             break;
                         };
                     }
@@ -160,13 +160,13 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
                     var i: u64 = 0;
                     while (i < length) : (i += 1) {
                         const data = self.drive.?.read(sector * 512 + i) catch |err| {
-                            try self.store(u64, Drive.STATUS, @enumToInt(Drive.errorToStatus(err)));
+                            try self.store(u64, Drive.STATUS, @intFromEnum(Drive.errorToStatus(err)));
                             break;
                         };
                         try self.store(u8, address + i, data);
                     }
                 }
-                try self.store(u64, Drive.STATUS, @enumToInt(Drive.Status.Success));
+                try self.store(u64, Drive.STATUS, @intFromEnum(Drive.Status.Success));
             }
         }
     };

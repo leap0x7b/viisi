@@ -1,23 +1,14 @@
 // From https://github.com/xyaman/mibu/blob/main/src/term.zig
 
 const std = @import("std");
-const builtin = @import("builtin");
-const root = @import("root");
 
-const system = if (@hasDecl(root, "os") and root.os != std.os.system)
-    root.os.system
-else switch (builtin.os.tag) {
-    .linux => std.os.linux,
-    .wasi => std.os.wasi,
-    else => std.c,
-};
-
+/// ReadMode defines the read behaivour when using raw mode
 pub const ReadMode = enum {
-    Blocking,
-    NonBlocking,
+    blocking,
+    nonblocking,
 };
 
-pub fn enableRawMode(handle: system.fd_t, blocking: ReadMode) !RawMode {
+pub fn enableRawMode(handle: std.os.system.fd_t, blocking: ReadMode) !RawMode {
     var original_termios = try std.os.tcgetattr(handle);
     var termios = original_termios;
 
@@ -37,21 +28,21 @@ pub fn enableRawMode(handle: system.fd_t, blocking: ReadMode) !RawMode {
     // Miscellaneous flags (most modern terminal already have them disabled)
     // BRKINT, INPCK, ISTRIP and CS8
 
-    termios.iflag &= ~(system.BRKINT | system.ICRNL | system.INPCK | system.ISTRIP | system.IXON);
-    //termios.oflag &= ~(system.OPOST);
-    termios.cflag |= (system.CS8);
-    termios.lflag &= ~(system.ECHO | system.ICANON | system.IEXTEN | system.ISIG);
+    termios.iflag &= ~(std.os.system.BRKINT | std.os.system.ICRNL | std.os.system.INPCK | std.os.system.ISTRIP | std.os.system.IXON);
+    termios.oflag &= ~(std.os.system.OPOST);
+    termios.cflag |= (std.os.system.CS8);
+    termios.lflag &= ~(std.os.system.ECHO | std.os.system.ICANON | std.os.system.IEXTEN | std.os.system.ISIG);
 
     switch (blocking) {
         // Wait until it reads at least one byte
-        .Blocking => termios.cc[system.V.MIN] = 1,
+        .blocking => termios.cc[std.os.system.V.MIN] = 1,
 
         // Don't wait
-        .NonBlocking => termios.cc[system.V.MIN] = 0,
+        .nonblocking => termios.cc[std.os.system.V.MIN] = 0,
     }
 
     // Wait 100 miliseconds at maximum.
-    termios.cc[system.V.TIME] = 1;
+    termios.cc[std.os.system.V.TIME] = 1;
 
     // apply changes
     try std.os.tcsetattr(handle, .FLUSH, termios);
@@ -68,7 +59,7 @@ pub const RawMode = struct {
     orig_termios: std.os.termios,
 
     /// The OS-specific file descriptor or file handle.
-    handle: system.fd_t,
+    handle: std.os.system.fd_t,
 
     const Self = @This();
 

@@ -123,7 +123,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
             const abi = [_][]const u8{
                 "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0",
                 "a1", "a2", "a3", "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5",
-        "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
+                "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
             };
             // zig fmt: on
 
@@ -187,33 +187,33 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
 
             if (irq != 0) {
                 try self.store(u32, Plic.SCLAIM, irq);
-                self.storeCsr(MIP, self.loadCsr(MIP) | @enumToInt(Mip.SEIP));
+                self.storeCsr(MIP, self.loadCsr(MIP) | @intFromEnum(Mip.SEIP));
             }
 
             const pending = self.loadCsr(MIE) & self.loadCsr(MIP);
 
-            if ((pending & @enumToInt(Mip.MEIP)) != 0) {
-                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.MEIP));
+            if ((pending & @intFromEnum(Mip.MEIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@intFromEnum(Mip.MEIP));
                 return .MachineExternal;
             }
-            if ((pending & @enumToInt(Mip.MSIP)) != 0) {
-                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.MSIP));
+            if ((pending & @intFromEnum(Mip.MSIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@intFromEnum(Mip.MSIP));
                 return .MachineSoftware;
             }
-            if ((pending & @enumToInt(Mip.MTIP)) != 0) {
-                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.MTIP));
+            if ((pending & @intFromEnum(Mip.MTIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@intFromEnum(Mip.MTIP));
                 return .MachineTimer;
             }
-            if ((pending & @enumToInt(Mip.SEIP)) != 0) {
-                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.SEIP));
+            if ((pending & @intFromEnum(Mip.SEIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@intFromEnum(Mip.SEIP));
                 return .SupervisorExternal;
             }
-            if ((pending & @enumToInt(Mip.SSIP)) != 0) {
-                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.SSIP));
+            if ((pending & @intFromEnum(Mip.SSIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@intFromEnum(Mip.SSIP));
                 return .SupervisorSoftware;
             }
-            if ((pending & @enumToInt(Mip.STIP)) != 0) {
-                self.storeCsr(MIP, self.loadCsr(MIP) & ~@enumToInt(Mip.STIP));
+            if ((pending & @intFromEnum(Mip.STIP)) != 0) {
+                self.storeCsr(MIP, self.loadCsr(MIP) & ~@intFromEnum(Mip.STIP));
                 return .SupervisorTimer;
             }
 
@@ -338,24 +338,24 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 // nop
                 0x00 => {},
                 0x03 => {
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst))) >> 20);
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst))))) >> 20));
                     const addr = self.regs[rs1] +% imm;
 
                     self.regs[rd] = switch (funct3) {
                         // lb
                         0 => blk: {
                             const val = try self.load(u8, addr);
-                            break :blk @bitCast(u64, @as(i64, @bitCast(i8, @truncate(u8, val))));
+                            break :blk @as(u64, @bitCast(@as(i64, @as(i8, @bitCast(@as(u8, @truncate(val)))))));
                         },
                         // lh
                         1 => blk: {
                             const val = try self.load(u16, addr);
-                            break :blk @bitCast(u64, @as(i64, @bitCast(i16, @truncate(u16, val))));
+                            break :blk @as(u64, @bitCast(@as(i64, @as(i16, @bitCast(@as(u16, @truncate(val)))))));
                         },
                         // lw
                         2 => blk: {
                             const val = try self.load(u32, addr);
-                            break :blk @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, val))));
+                            break :blk @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(val)))))));
                         },
                         // ld
                         3 => try self.load(u64, addr),
@@ -383,8 +383,8 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     }
                 },
                 0x13 => {
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfff00000))) >> 20);
-                    const shamt = @truncate(u32, imm & 0x3f);
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0xfff00000))))) >> 20));
+                    const shamt = @as(u32, @truncate(imm & 0x3f));
 
                     self.regs[rd] = switch (funct3) {
                         // addi
@@ -392,7 +392,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         // slli
                         1 => std.math.shl(u64, self.regs[rs1], shamt),
                         // slti
-                        2 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, imm)) 1 else 0,
+                        2 => if (@as(i64, @bitCast(self.regs[rs1])) < @as(i64, @bitCast(imm))) 1 else 0,
                         // sltiu
                         3 => if (self.regs[rs1] < imm) 1 else 0,
                         // xori
@@ -401,7 +401,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             // slri
                             0x00 => std.math.shr(u64, self.regs[rs1], shamt),
                             // srai
-                            0x10 => @bitCast(u64, std.math.shr(i64, @bitCast(i64, self.regs[rs1]), shamt)),
+                            0x10 => @as(u64, @bitCast(std.math.shr(i64, @as(i64, @bitCast(self.regs[rs1])), shamt))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -419,23 +419,23 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 },
                 // auipc
                 0x17 => {
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfff00000))));
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0xfff00000)))))));
                     self.regs[rd] = (self.pc +% imm) - 4;
                 },
                 0x1b => {
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst))) >> 20);
-                    const shamt = @truncate(u32, imm & 0x1f);
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst))))) >> 20));
+                    const shamt = @as(u32, @truncate(imm & 0x1f));
 
                     self.regs[rd] = switch (funct3) {
                         // addiw
-                        0 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] +% imm)))),
+                        0 => @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1] +% imm))))))),
                         // slliw
-                        1 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, std.math.shl(u64, self.regs[rs1], shamt))))),
+                        1 => @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(std.math.shl(u64, self.regs[rs1], shamt)))))))),
                         5 => switch (funct7) {
                             // slriw
-                            0x00 => @bitCast(u64, @as(i64, @bitCast(i32, std.math.shr(u32, @truncate(u32, self.regs[rs1]), shamt)))),
+                            0x00 => @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(std.math.shr(u32, @as(u32, @truncate(self.regs[rs1])), shamt)))))),
                             // sraiw
-                            0x20 => @bitCast(u64, @as(i64, std.math.shr(u32, @truncate(u32, self.regs[rs1]), shamt))),
+                            0x20 => @as(u64, @bitCast(@as(i64, std.math.shr(u32, @as(u32, @truncate(self.regs[rs1])), shamt)))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -448,7 +448,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     };
                 },
                 0x23 => {
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfe000000))) >> 20) | ((inst >> 7) & 0x1f);
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0xfe000000))))) >> 20)) | ((inst >> 7) & 0x1f);
                     const addr = self.regs[rs1] +% imm;
 
                     switch (funct3) {
@@ -521,7 +521,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     };
                 },
                 0x33 => {
-                    const shamt = @truncate(u32, self.regs[rs2] & 0x3f);
+                    const shamt = @as(u32, @truncate(self.regs[rs2] & 0x3f));
 
                     self.regs[rd] = switch (funct3) {
                         0 => switch (funct7) {
@@ -539,7 +539,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         // sll
                         1 => std.math.shl(u64, self.regs[rs1], shamt),
                         // slt
-                        2 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, self.regs[rs2])) 1 else 0,
+                        2 => if (@as(i64, @bitCast(self.regs[rs1])) < @as(i64, @bitCast(self.regs[rs2]))) 1 else 0,
                         // sltu
                         3 => if (self.regs[rs1] < self.regs[rs2]) 1 else 0,
                         4 => switch (funct7) {
@@ -549,9 +549,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             0x01 => switch (self.regs[rs2]) {
                                 0 => std.math.maxInt(u64),
                                 else => blk: {
-                                    const dividend = @bitCast(i64, self.regs[rs1]);
-                                    const divisor = @bitCast(i64, self.regs[rs2]);
-                                    break :blk @bitCast(u64, @divTrunc(dividend, divisor));
+                                    const dividend = @as(i64, @bitCast(self.regs[rs1]));
+                                    const divisor = @as(i64, @bitCast(self.regs[rs2]));
+                                    break :blk @as(u64, @bitCast(@divTrunc(dividend, divisor)));
                                 },
                             },
                             else => {
@@ -572,7 +572,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                 },
                             },
                             // sra
-                            0x20 => @bitCast(u64, std.math.shr(i64, @bitCast(i64, self.regs[rs1]), self.regs[rs2])),
+                            0x20 => @as(u64, @bitCast(std.math.shr(i64, @as(i64, @bitCast(self.regs[rs1])), self.regs[rs2]))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -585,9 +585,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             0x01 => switch (self.regs[rs2]) {
                                 0 => self.regs[rs1],
                                 else => blk: {
-                                    const dividend = @bitCast(i64, self.regs[rs1]);
-                                    const divisor = @bitCast(i64, self.regs[rs2]);
-                                    break :blk @bitCast(u64, @mod(dividend, divisor));
+                                    const dividend = @as(i64, @bitCast(self.regs[rs1]));
+                                    const divisor = @as(i64, @bitCast(self.regs[rs2]));
+                                    break :blk @as(u64, @bitCast(@mod(dividend, divisor)));
                                 },
                             },
                             else => {
@@ -619,31 +619,31 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     };
                 },
                 // lui
-                0x37 => self.regs[rd] = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfffff000)))),
+                0x37 => self.regs[rd] = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0xfffff000))))))),
                 0x3b => {
-                    const shamt = @truncate(u32, self.regs[rs2] & 0x1f);
+                    const shamt = @as(u32, @truncate(self.regs[rs2] & 0x1f));
 
                     self.regs[rd] = switch (funct3) {
                         0 => switch (funct7) {
                             // addw
-                            0x00 => @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, self.regs[rs1] +% self.regs[rs2])))),
+                            0x00 => @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1] +% self.regs[rs2]))))))),
                             // subw
-                            0x20 => @intCast(u64, @bitCast(i32, @truncate(u32, self.regs[rs1] -% self.regs[rs2]))),
+                            0x20 => @as(u64, @intCast(@as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1] -% self.regs[rs2])))))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
                             },
                         },
                         // sllw
-                        1 => @intCast(u64, @bitCast(i32, @truncate(u32, self.regs[rs1])) << @truncate(u5, shamt)),
+                        1 => @as(u64, @intCast(@as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1])))) << @as(u5, @truncate(shamt)))),
                         4 => switch (funct7) {
                             // divw
                             0x01 => switch (self.regs[rs2]) {
                                 0 => std.math.maxInt(u64),
                                 else => blk: {
-                                    const dividend = @bitCast(i32, @truncate(u32, self.regs[rs1]));
-                                    const divisor = @bitCast(i32, @truncate(u32, self.regs[rs2]));
-                                    break :blk @intCast(u64, @divTrunc(dividend, divisor));
+                                    const dividend = @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1]))));
+                                    const divisor = @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs2]))));
+                                    break :blk @as(u64, @intCast(@divTrunc(dividend, divisor)));
                                 },
                             },
                             else => {
@@ -653,18 +653,18 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                         },
                         5 => switch (funct7) {
                             // srlw
-                            0x00 => @intCast(u64, std.math.shr(i32, @bitCast(i32, @truncate(u32, self.regs[rs1])), shamt)),
+                            0x00 => @as(u64, @intCast(std.math.shr(i32, @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1])))), shamt))),
                             // divuw
                             0x01 => switch (self.regs[rs2]) {
                                 0 => std.math.maxInt(u64),
                                 else => blk: {
-                                    const dividend = @truncate(u32, self.regs[rs1]);
-                                    const divisor = @truncate(u32, self.regs[rs2]);
-                                    break :blk @intCast(u64, @bitCast(i32, dividend / divisor));
+                                    const dividend = @as(u32, @truncate(self.regs[rs1]));
+                                    const divisor = @as(u32, @truncate(self.regs[rs2]));
+                                    break :blk @as(u64, @intCast(@as(i32, @bitCast(dividend / divisor))));
                                 },
                             },
                             // sraw
-                            0x20 => @intCast(u64, @bitCast(i32, std.math.shr(u32, @truncate(u32, self.regs[rs1]), @bitCast(i32, shamt)))),
+                            0x20 => @as(u64, @intCast(@as(i32, @bitCast(std.math.shr(u32, @as(u32, @truncate(self.regs[rs1])), @as(i32, @bitCast(shamt))))))),
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
                                 return error.IllegalInstruction;
@@ -675,9 +675,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             0x01 => switch (self.regs[rs2]) {
                                 0 => self.regs[rs1],
                                 else => blk: {
-                                    const dividend = @bitCast(i32, @truncate(u32, self.regs[rs1]));
-                                    const divisor = @bitCast(i32, @truncate(u32, self.regs[rs2]));
-                                    break :blk @intCast(u64, @mod(dividend, divisor));
+                                    const dividend = @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs1]))));
+                                    const divisor = @as(i32, @bitCast(@as(u32, @truncate(self.regs[rs2]))));
+                                    break :blk @as(u64, @intCast(@mod(dividend, divisor)));
                                 },
                             },
                             else => {
@@ -690,9 +690,9 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             0x01 => switch (self.regs[rs2]) {
                                 0 => self.regs[rs1],
                                 else => blk: {
-                                    const dividend = @truncate(u32, self.regs[rs1]);
-                                    const divisor = @truncate(u32, self.regs[rs2]);
-                                    break :blk @intCast(u64, @bitCast(i32, dividend % divisor));
+                                    const dividend = @as(u32, @truncate(self.regs[rs1]));
+                                    const divisor = @as(u32, @truncate(self.regs[rs2]));
+                                    break :blk @as(u64, @intCast(@as(i32, @bitCast(dividend % divisor))));
                                 },
                             },
                             else => {
@@ -707,21 +707,16 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                     };
                 },
                 0x63 => {
-                    // zig fmt: off
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 19)
-                        | ((inst & 0x80) << 4)
-                        | ((inst >> 20) & 0x7e0)
-                        | ((inst >> 7) & 0x1e);
-                    // zig fmt: on
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0x80000000))))) >> 19)) | ((inst & 0x80) << 4) | ((inst >> 20) & 0x7e0) | ((inst >> 7) & 0x1e);
                     self.pc = switch (funct3) {
                         // beq
                         0 => if (self.regs[rs1] == self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         // bne
                         1 => if (self.regs[rs1] != self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         // blt
-                        4 => if (@bitCast(i64, self.regs[rs1]) < @bitCast(i64, self.regs[rs2])) (self.pc +% imm) - 4 else 0,
+                        4 => if (@as(i64, @bitCast(self.regs[rs1])) < @as(i64, @bitCast(self.regs[rs2]))) (self.pc +% imm) - 4 else 0,
                         // bge
-                        5 => if (@bitCast(i64, self.regs[rs1]) >= @bitCast(i64, self.regs[rs2])) (self.pc +% imm) - 4 else 0,
+                        5 => if (@as(i64, @bitCast(self.regs[rs1])) >= @as(i64, @bitCast(self.regs[rs2]))) (self.pc +% imm) - 4 else 0,
                         // bltu
                         6 => if (self.regs[rs1] < self.regs[rs2]) (self.pc +% imm) - 4 else 0,
                         // bgeu
@@ -736,20 +731,15 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 0x67 => {
                     const pc = self.pc;
 
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0xfff00000))) >> 20);
-                    self.pc = (self.regs[rs1] +% imm) & ~@intCast(u64, 1);
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0xfff00000))))) >> 20));
+                    self.pc = (self.regs[rs1] +% imm) & ~@as(u64, @intCast(1));
 
                     self.regs[rd] = pc;
                 },
                 // jal
                 0x6f => {
                     self.regs[rd] = self.pc;
-                    // zig fmt: off
-                    const imm = @bitCast(u64, @as(i64, @bitCast(i32, @truncate(u32, inst & 0x80000000))) >> 11)
-                        | (inst & 0xff000)
-                        | ((inst >> 9) & 0x800)
-                        | ((inst >> 20) & 0x7fe);
-                    // zig fmt: on
+                    const imm = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(inst & 0x80000000))))) >> 11)) | (inst & 0xff000) | ((inst >> 9) & 0x800) | ((inst >> 20) & 0x7fe);
                     self.pc = (self.pc +% imm) - 4;
                 },
                 0x73 => {
@@ -777,10 +767,10 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                         if (((self.loadCsr(SSTATUS) >> 5) & 1) == 1)
                                             self.loadCsr(SSTATUS) | (1 << 1)
                                         else
-                                            self.loadCsr(SSTATUS) & ~@intCast(u64, 1 << 1),
+                                            self.loadCsr(SSTATUS) & ~@as(u64, @intCast(1 << 1)),
                                     );
                                     self.storeCsr(SSTATUS, self.loadCsr(SSTATUS) | (1 << 1));
-                                    self.storeCsr(SSTATUS, self.loadCsr(SSTATUS) & ~@intCast(u64, 1 << 1));
+                                    self.storeCsr(SSTATUS, self.loadCsr(SSTATUS) & ~@as(u64, @intCast(1 << 1)));
                                 },
                                 // mret
                                 0x18 => {
@@ -795,10 +785,10 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                                         if (((self.loadCsr(MSTATUS) >> 7) & 1) == 1)
                                             self.loadCsr(MSTATUS) | (1 << 3)
                                         else
-                                            self.loadCsr(MSTATUS) & ~@intCast(u64, 1 << 3),
+                                            self.loadCsr(MSTATUS) & ~@as(u64, @intCast(1 << 3)),
                                     );
                                     self.storeCsr(MSTATUS, self.loadCsr(MSTATUS) | (1 << 7));
-                                    self.storeCsr(MSTATUS, self.loadCsr(MSTATUS) & ~@intCast(u64, 0b11 << 11));
+                                    self.storeCsr(MSTATUS, self.loadCsr(MSTATUS) & ~@as(u64, @intCast(0b11 << 11)));
                                 },
                                 else => {},
                             },

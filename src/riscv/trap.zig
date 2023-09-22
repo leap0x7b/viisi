@@ -78,7 +78,7 @@ pub fn interruptCode(interrupt: Interrupt) u64 {
 
 pub fn handleTrap(trap: anytype, cpu: anytype) !void {
     switch (@TypeOf(trap)) {
-        Exception => handleException(@errSetCast(Exception, trap), cpu),
+        Exception => handleException(@as(Exception, @errSetCast(trap)), cpu),
         Interrupt => handleInterrupt(trap, cpu),
         else => return error.NotATrap,
     }
@@ -89,10 +89,10 @@ pub fn handleException(exception: Exception, cpu: anytype) void {
     const previous_mode = cpu.mode;
 
     var cause = exceptionCode(exception);
-    if ((previous_mode == .Supervisor) and ((cpu.loadCsr(Cpu.MEDELEG) >> @truncate(u6, cause)) & 1 != 0)) {
+    if ((previous_mode == .Supervisor) and ((cpu.loadCsr(Cpu.MEDELEG) >> @as(u6, @truncate(cause))) & 1 != 0)) {
         cpu.mode = .Supervisor;
-        cpu.pc = cpu.loadCsr(Cpu.STVEC) & ~@intCast(u64, 1);
-        cpu.storeCsr(Cpu.SEPC, exception_pc & @intCast(u64, 1));
+        cpu.pc = cpu.loadCsr(Cpu.STVEC) & ~@as(u64, 1);
+        cpu.storeCsr(Cpu.SEPC, exception_pc & @as(u64, 1));
         cpu.storeCsr(Cpu.SCAUSE, cause);
         cpu.storeCsr(Cpu.STVAL, 0);
         cpu.storeCsr(
@@ -100,16 +100,16 @@ pub fn handleException(exception: Exception, cpu: anytype) void {
             if (((cpu.loadCsr(Cpu.SSTATUS) >> 1) & 1) == 1)
                 cpu.loadCsr(Cpu.SSTATUS) | (1 << 5)
             else
-                cpu.loadCsr(Cpu.SSTATUS) & ~@intCast(u64, 1 << 5),
+                cpu.loadCsr(Cpu.SSTATUS) & ~@as(u64, 1 << 5),
         );
         switch (previous_mode) {
-            .User => cpu.storeCsr(Cpu.SSTATUS, cpu.loadCsr(Cpu.SSTATUS) & ~@intCast(u64, 1 << 8)),
+            .User => cpu.storeCsr(Cpu.SSTATUS, cpu.loadCsr(Cpu.SSTATUS) & ~@as(u64, 1 << 8)),
             else => cpu.storeCsr(Cpu.SSTATUS, cpu.loadCsr(Cpu.SSTATUS) | (1 << 8)),
         }
     } else {
         cpu.mode = .Machine;
-        cpu.pc = cpu.loadCsr(Cpu.MTVEC) & ~@intCast(u64, 1);
-        cpu.storeCsr(Cpu.MEPC, exception_pc & ~@intCast(u64, 1));
+        cpu.pc = cpu.loadCsr(Cpu.MTVEC) & ~@as(u64, 1);
+        cpu.storeCsr(Cpu.MEPC, exception_pc & ~@as(u64, 1));
         cpu.storeCsr(Cpu.MCAUSE, cause);
         cpu.storeCsr(Cpu.MTVAL, 0);
         cpu.storeCsr(
@@ -117,10 +117,10 @@ pub fn handleException(exception: Exception, cpu: anytype) void {
             if (((cpu.loadCsr(Cpu.MSTATUS) >> 3) & 1) == 1)
                 cpu.loadCsr(Cpu.MSTATUS) | (1 << 7)
             else
-                cpu.loadCsr(Cpu.MSTATUS) & ~@intCast(u64, 1 << 7),
+                cpu.loadCsr(Cpu.MSTATUS) & ~@as(u64, 1 << 7),
         );
-        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@intCast(u64, 1 << 3));
-        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@intCast(u64, 0b11 << 11));
+        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@as(u64, 1 << 3));
+        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@as(u64, 0b11 << 11));
     }
 }
 
@@ -131,16 +131,16 @@ pub fn handleInterrupt(interrupt: Interrupt, cpu: anytype) void {
     const previous_mode = cpu.mode;
 
     var cause = (1 << 63) | interruptCode(interrupt);
-    if ((previous_mode == .Supervisor) and ((cpu.loadCsr(Cpu.MEDELEG) >> @truncate(u6, cause)) & 1 != 0)) {
+    if ((previous_mode == .Supervisor) and ((cpu.loadCsr(Cpu.MEDELEG) >> @as(u6, @truncate(cause))) & 1 != 0)) {
         cpu.mode = .Supervisor;
 
         const vector = switch (cpu.loadCsr(Cpu.STVEC) & 1) {
             1 => 4 * cause,
             else => 0,
         };
-        cpu.pc = (cpu.loadCsr(Cpu.STVEC) & ~@intCast(u64, 1)) + vector;
+        cpu.pc = (cpu.loadCsr(Cpu.STVEC) & ~@as(u64, 1)) + vector;
 
-        cpu.storeCsr(Cpu.SEPC, interrupt_pc & @intCast(u64, 1));
+        cpu.storeCsr(Cpu.SEPC, interrupt_pc & @as(u64, 1));
         cpu.storeCsr(Cpu.SCAUSE, cause);
         cpu.storeCsr(Cpu.STVAL, 0);
         cpu.storeCsr(
@@ -148,10 +148,10 @@ pub fn handleInterrupt(interrupt: Interrupt, cpu: anytype) void {
             if (((cpu.loadCsr(Cpu.SSTATUS) >> 1) & 1) == 1)
                 cpu.loadCsr(Cpu.SSTATUS) | (1 << 5)
             else
-                cpu.loadCsr(Cpu.SSTATUS) & ~@intCast(u64, 1 << 5),
+                cpu.loadCsr(Cpu.SSTATUS) & ~@as(u64, 1 << 5),
         );
         switch (previous_mode) {
-            .User => cpu.storeCsr(Cpu.SSTATUS, cpu.loadCsr(Cpu.SSTATUS) & ~@intCast(u64, 1 << 8)),
+            .User => cpu.storeCsr(Cpu.SSTATUS, cpu.loadCsr(Cpu.SSTATUS) & ~@as(u64, 1 << 8)),
             else => cpu.storeCsr(Cpu.SSTATUS, cpu.loadCsr(Cpu.SSTATUS) | (1 << 8)),
         }
     } else {
@@ -161,9 +161,9 @@ pub fn handleInterrupt(interrupt: Interrupt, cpu: anytype) void {
             1 => 4 * cause,
             else => 0,
         };
-        cpu.pc = (cpu.loadCsr(Cpu.MTVEC) & ~@intCast(u64, 1)) + vector;
+        cpu.pc = (cpu.loadCsr(Cpu.MTVEC) & ~@as(u64, 1)) + vector;
 
-        cpu.storeCsr(Cpu.MEPC, interrupt_pc & ~@intCast(u64, 1));
+        cpu.storeCsr(Cpu.MEPC, interrupt_pc & ~@as(u64, 1));
         cpu.storeCsr(Cpu.MCAUSE, cause);
         cpu.storeCsr(Cpu.MTVAL, 0);
         cpu.storeCsr(
@@ -171,9 +171,9 @@ pub fn handleInterrupt(interrupt: Interrupt, cpu: anytype) void {
             if (((cpu.loadCsr(Cpu.MSTATUS) >> 3) & 1) == 1)
                 cpu.loadCsr(Cpu.MSTATUS) | (1 << 7)
             else
-                cpu.loadCsr(Cpu.MSTATUS) & ~@intCast(u64, 1 << 7),
+                cpu.loadCsr(Cpu.MSTATUS) & ~@as(u64, 1 << 7),
         );
-        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@intCast(u64, 1 << 3));
-        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@intCast(u64, 0b11 << 11));
+        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@as(u64, 1 << 3));
+        cpu.storeCsr(Cpu.MSTATUS, cpu.loadCsr(Cpu.MSTATUS) & ~@as(u64, 0b11 << 11));
     }
 }

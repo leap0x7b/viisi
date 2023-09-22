@@ -1,7 +1,7 @@
 const std = @import("std");
 const deps = @import("deps.zig");
 
-const viisi_version = std.builtin.Version{
+const viisi_version = std.SemanticVersion{
     .major = 0,
     .minor = 1,
     .patch = 0,
@@ -9,7 +9,7 @@ const viisi_version = std.builtin.Version{
 
 pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
     const exe_options = b.addOptions();
 
     // From zls
@@ -18,7 +18,7 @@ pub fn build(b: *std.build.Builder) void {
 
         var code: u8 = undefined;
         const git_describe_untrimmed = b.execAllowFail(&[_][]const u8{
-            "git", "-C", b.build_root, "describe", "--match", "*.*.*", "--tags",
+            "git", "-C", b.build_root.path.?, "describe", "--match", "*.*.*", "--tags",
         }, &code, .Ignore) catch break :v version_string;
 
         const git_describe = std.mem.trim(u8, git_describe_untrimmed, " \n\r");
@@ -36,7 +36,7 @@ pub fn build(b: *std.build.Builder) void {
                 const commit_height = it.next().?;
                 const commit_id = it.next().?;
 
-                const ancestor_ver = std.builtin.Version.parse(tagged_ancestor) catch unreachable;
+                const ancestor_ver = std.SemanticVersion.parse(tagged_ancestor) catch unreachable;
                 std.debug.assert(viisi_version.order(ancestor_ver) == .gt); // version must be greater than its previous version
                 std.debug.assert(std.mem.startsWith(u8, commit_id, "g")); // commit hash is prefixed with a 'g'
 
@@ -51,18 +51,22 @@ pub fn build(b: *std.build.Builder) void {
 
     exe_options.addOption([:0]const u8, "version", b.allocator.dupeZ(u8, version) catch "0.1.0");
 
-    const exe = b.addExecutable("viisi", "src/main.zig");
-    const sdk = deps.imports.sdl_sdk.init(b);
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
+    const exe = b.addExecutable(.{
+        .name = "viisi",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const sdk = deps.imports.sdl_sdk.init(b, null);
     exe.addOptions("build_options", exe_options);
     deps.addAllTo(exe);
-    exe.addPackage(sdk.getWrapperPackage("sdl2"));
-    exe.linkSystemLibrary("sdl2");
+    sdk.link(exe, .dynamic);
+    exe.addModule("sdl2", sdk.getWrapperModule());
     exe.linkLibC();
-    exe.install();
+    b.installArtifact(exe);
 
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
@@ -71,10 +75,11 @@ pub fn build(b: *std.build.Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const exe_tests = b.addTest("src/riscv/tests.zig");
-    exe_tests.setTarget(target);
-    exe_tests.setBuildMode(mode);
-
+    const exe_tests = b.addTest(.{
+        .root_source_file = .{ .path = "src/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
 }

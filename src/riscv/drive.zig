@@ -43,7 +43,7 @@ pub fn errorToStatus(err: anyerror) Status {
     };
 }
 
-notify: u64 = @bitCast(u64, @as(i64, -1)),
+notify: u64 = @as(u64, @bitCast(@as(i64, -1))),
 direction: u64 = 0,
 buffer_address: u64 = 0,
 buffer_length: u64 = 0,
@@ -60,7 +60,7 @@ pub fn load(self: *Self, comptime T: type, address: u64) trap.Exception!u64 {
         BUFFER_ADDRESS => self.buffer_address,
         BUFFER_LENGTH => self.buffer_length,
         SECTOR => self.sector,
-        STATUS => @enumToInt(self.status),
+        STATUS => @intFromEnum(self.status),
         else => 0,
     };
 }
@@ -73,14 +73,14 @@ pub fn store(self: *Self, comptime T: type, address: u64, value: u64) trap.Excep
         BUFFER_ADDRESS => self.buffer_address = value,
         BUFFER_LENGTH => self.buffer_length = value,
         SECTOR => self.sector = value,
-        STATUS => self.status = @intToEnum(Status, value),
+        STATUS => self.status = @as(Status, @enumFromInt(value)),
         else => {},
     }
 }
 
 pub fn isInterrupting(self: *Self) bool {
-    if (self.notify != @bitCast(u64, @as(i64, -1))) {
-        self.notify = @bitCast(u64, @as(i64, -1));
+    if (self.notify != @as(u64, @bitCast(@as(i64, -1)))) {
+        self.notify = @as(u64, @bitCast(@as(i64, -1)));
         return true;
     }
     return false;

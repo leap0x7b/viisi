@@ -2,3 +2,5 @@
 zig-cache
 zig-out
 deps.zig
+licenses.txt
+.build_config
