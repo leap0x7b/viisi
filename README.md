@@ -7,8 +7,6 @@
 
 It's currently very bare bones right now, but it does have an almost full RV64IM(A) emulator. You can run one of the test files with `zig build run -- --kernel tests/<file>.bin`.
 
-Currently only works with Zig version before 0.11.0-dev.1501+885d69689 (which is the latest version of Zig nightly that doesn't use the new build system), but a version of Viisi that uses the new build system.
-
 ## Progress
 - [X] RV64GC emulator (WIP)
   - [X] RV32I - Base 32-bit instruction set
