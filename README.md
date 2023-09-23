@@ -22,8 +22,8 @@ It's currently very bare bones right now, but it does have an almost full RV64IM
   - [ ] Pass all tests in [riscv-tests](https://github.com/riscv/riscv-tests)
 - [X] UART
 - [X] Basic disk drive controller
-- [ ] RTC
-- [ ] Framebuffer
+- [X] RTC
+- [X] Framebuffer
 - [ ] Networking
 
 ## Acknowledgements
