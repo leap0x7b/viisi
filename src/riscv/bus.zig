@@ -4,6 +4,7 @@ const Dram = @import("dram.zig");
 const Clint = @import("clint.zig");
 const Plic = @import("plic.zig");
 const Uart = @import("uart.zig").Uart;
+const Framebuffer = @import("framebuffer.zig");
 const Drive = @import("drive.zig");
 
 pub const DRAM_BASE: u64 = 0x80000000;
@@ -63,7 +64,7 @@ pub const Mmio = struct {
 
     .Framebuffer = .{
         .base = 0x10001000,
-        .size = 0x1d4c00, // 800x600x32 (TODO: try to make a framebuffer with a redefinable resolution and bit depth if possible)
+        .size = 800 * 600 * 4, // 800x600x32 (TODO: try to make a framebuffer with a redefinable resolution and bit depth if possible)
     },
 
     .Drive = .{
@@ -89,6 +90,7 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
         clint: Clint = .{},
         plic: Plic = .{},
         uart: Uart(reader, writer),
+        framebuffer: Framebuffer = .{},
         drive: ?Drive,
         dram: Dram,
 
@@ -104,6 +106,9 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
 
             if (Mmio.Uart.base <= address and address < Mmio.Uart.base + Mmio.Uart.size)
                 return self.uart.load(T, address);
+
+            if (Mmio.Framebuffer.base <= address and address < Mmio.Framebuffer.base + Mmio.Framebuffer.size)
+                return self.framebuffer.load(T, address);
 
             if (self.drive != null) {
                 if (Mmio.Drive.base <= address and address < Mmio.Drive.base + Mmio.Drive.size)
@@ -128,6 +133,9 @@ pub fn Bus(comptime reader: anytype, comptime writer: anytype) type {
 
             if (Mmio.Uart.base <= address and address < Mmio.Uart.base + Mmio.Uart.size)
                 return self.uart.store(T, address, value);
+
+            if (Mmio.Framebuffer.base <= address and address < Mmio.Framebuffer.base + Mmio.Framebuffer.size)
+                return self.framebuffer.store(T, address, value);
 
             if (self.drive != null) {
                 if (Mmio.Drive.base <= address and address < Mmio.Drive.base + Mmio.Drive.size)

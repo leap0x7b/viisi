@@ -113,8 +113,10 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 .dram = dram,
                 .size = mem_size,
             };
+
             if (disk) |d|
                 self.bus.drive = .{ .disk = d };
+
             self.regs[2] = bus.DRAM_BASE + mem_size;
         }
 

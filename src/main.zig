@@ -51,6 +51,15 @@ pub fn main() !void {
     };
     defer res.deinit();
 
+    var window: sdl2.Window = undefined;
+    var renderer: sdl2.Renderer = undefined;
+    var texture: sdl2.Texture = undefined;
+
+    defer if (res.args.bios) |_| if (res.args.headless == 0) sdl2.quit();
+    defer if (res.args.bios) |_| if (res.args.headless == 0) window.destroy();
+    defer if (res.args.bios) |_| if (res.args.headless == 0) renderer.destroy();
+    defer if (res.args.bios) |_| if (res.args.headless == 0) texture.destroy();
+
     if (res.args.help != 0)
         return help(&params, stderr.writer());
 
@@ -80,29 +89,32 @@ pub fn main() !void {
         //var raw_mode = try term.enableRawMode(stdin.handle, .Blocking);
         //defer raw_mode.disableRawMode() catch unreachable;
 
-        var window: ?sdl2.Window = null;
-        var renderer: ?sdl2.Renderer = null;
-
         if (res.args.headless == 0) {
             try sdl2.init(.{
                 .video = true,
                 .events = true,
                 .audio = true,
             });
-            defer sdl2.quit();
+            errdefer sdl2.quit();
 
             window = try sdl2.createWindow(
                 "Viisi",
                 .{ .centered = {} },
                 .{ .centered = {} },
-                640,
-                480,
-                .{ .vis = .shown },
+                800,
+                600,
+                .{
+                    .vis = .shown,
+                    .allow_high_dpi = true,
+                },
             );
-            defer window.?.destroy();
+            errdefer window.destroy();
 
-            renderer = try sdl2.createRenderer(window.?, null, .{ .accelerated = true });
-            defer renderer.?.destroy();
+            renderer = try sdl2.createRenderer(window, null, .{ .accelerated = true });
+            errdefer renderer.destroy();
+
+            texture = try sdl2.createTexture(renderer, .rgbx8888, .streaming, 800, 600);
+            errdefer texture.destroy();
         }
 
         var cpu = try riscv.cpu.init(buffered_stdin, buffered_stdout);
@@ -135,15 +147,21 @@ pub fn main() !void {
                     }
                 }
 
-                try renderer.?.setColorRGB(0xF7, 0xA4, 0x1D);
-                try renderer.?.clear();
+                var pixel_data = try texture.lock(null);
+                @memcpy(pixel_data.pixels[0..riscv.bus.Mmio.Framebuffer.size], cpu.bus.framebuffer.framebuffer[0..]);
+                pixel_data.stride = 800 * 4;
+                pixel_data.release();
 
-                renderer.?.present();
+                try renderer.clear();
+                try renderer.copy(texture, null, null);
+                renderer.present();
+
+                //if (cpu.pc == 0) break :fb_loop;
             }
         }
 
-        //cpu.dumpRegisters();
-        //cpu.dumpCsrs();
+        cpu.dumpRegisters();
+        cpu.dumpCsrs();
     }
 }
 
