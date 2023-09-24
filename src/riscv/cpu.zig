@@ -2,7 +2,7 @@ const std = @import("std");
 const trap = @import("trap.zig");
 const bus = @import("bus.zig");
 const uart = @import("uart.zig");
-const Drive = @import("uart.zig");
+const Drive = @import("drive.zig");
 const Plic = @import("plic.zig");
 const log = std.log.scoped(.cpu);
 
@@ -248,7 +248,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
             var i: u64 = levels - 1;
             var pte: u64 = 0;
             while (true) {
-                pte = try self.load(u64, a + vpn[i] * 8);
+                pte = try self.bus.load(u64, a + vpn[i] * 8);
 
                 const v = pte & 1;
                 const r = (pte >> 1) & 1;
@@ -282,10 +282,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
 
             const offset = address & 0xfff;
             return switch (i) {
-                0 => blk: {
-                    const _ppn = (pte >> 10) & 0xfffffffffff;
-                    break :blk (_ppn << 12) | offset;
-                },
+                0 => (((pte >> 10) & 0xfffffffffff) << 12) | offset,
                 1, 2 => (ppn[2] << 30) | (ppn[1] << 21) | (vpn[0] << 12) | offset,
                 else => switch (access_type) {
                     .Instruction => error.InstructionPageFault,
@@ -345,20 +342,11 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
 
                     self.regs[rd] = switch (funct3) {
                         // lb
-                        0 => blk: {
-                            const val = try self.load(u8, addr);
-                            break :blk @as(u64, @bitCast(@as(i64, @as(i8, @bitCast(@as(u8, @truncate(val)))))));
-                        },
+                        0 => @as(u64, @bitCast(@as(i64, @as(i8, @bitCast(@as(u8, @truncate(try self.load(u8, addr)))))))),
                         // lh
-                        1 => blk: {
-                            const val = try self.load(u16, addr);
-                            break :blk @as(u64, @bitCast(@as(i64, @as(i16, @bitCast(@as(u16, @truncate(val)))))));
-                        },
+                        1 => @as(u64, @bitCast(@as(i64, @as(i16, @bitCast(@as(u16, @truncate(try self.load(u16, addr)))))))),
                         // lw
-                        2 => blk: {
-                            const val = try self.load(u32, addr);
-                            break :blk @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(val)))))));
-                        },
+                        2 => @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(try self.load(u32, addr)))))))),
                         // ld
                         3 => try self.load(u64, addr),
                         // lbu
@@ -567,11 +555,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             // divu
                             0x01 => switch (self.regs[rs2]) {
                                 0 => std.math.maxInt(u64),
-                                else => blk: {
-                                    const dividend = self.regs[rs1];
-                                    const divisor = self.regs[rs2];
-                                    break :blk dividend / divisor;
-                                },
+                                else => self.regs[rs1] / self.regs[rs2],
                             },
                             // sra
                             0x20 => @as(u64, @bitCast(std.math.shr(i64, @as(i64, @bitCast(self.regs[rs1])), self.regs[rs2]))),
@@ -603,11 +587,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                             // remu
                             0x01 => switch (self.regs[rs2]) {
                                 0 => self.regs[rs1],
-                                else => blk: {
-                                    const dividend = self.regs[rs1];
-                                    const divisor = self.regs[rs2];
-                                    break :blk dividend % divisor;
-                                },
+                                else => self.regs[rs1] % self.regs[rs2],
                             },
                             else => {
                                 log.err("Unimplemented opcode: {x} (funct3: {x}, funct7: {x})", .{ opcode, funct3, funct7 });
