@@ -1,0 +1,8 @@
+[package]
+name = "viisi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+unicorn-engine = "2.0.1"
+minifb = "0.25"

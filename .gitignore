@@ -1,6 +1,2 @@
-.zigmod
-zig-cache
-zig-out
-deps.zig
-licenses.txt
-.build_config
+target
+SDL2.dll
