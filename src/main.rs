@@ -38,7 +38,7 @@ fn main() -> io::Result<()> {
     };
     let framebuffer_write_callback = {
         let framebuffer = Rc::clone(&framebuffer);
-        move |_: &mut Unicorn<'_, ()>, address, _: usize, value| framebuffer.borrow_mut().store(address + 0x10001000, value as u32)
+        move |_: &mut Unicorn<'_, ()>, address, _: usize, value| framebuffer.borrow_mut().store(address + 0x10001000, value as u8)
     };
 
     let mut window = Window::new(
@@ -60,7 +60,17 @@ fn main() -> io::Result<()> {
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let framebuffer = Rc::clone(&framebuffer);
-        window.update_with_buffer(&framebuffer.borrow_mut().framebuffer, 800, 600).unwrap();
+        let framebuffer = &framebuffer.borrow_mut().framebuffer;
+        let mut buffer: Vec<u32> = Vec::new();
+        for chunk in framebuffer.chunks_exact(4) {
+            let mut result = 0;
+            for (i, &byte) in chunk.iter().enumerate() {
+                result |= (byte as u32) << (8 * i);
+            }
+            buffer.push(result);
+        }
+    
+        window.update_with_buffer(&buffer, 800, 600).unwrap();
     }
 
     Ok(())
