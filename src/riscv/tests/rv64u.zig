@@ -16,11 +16,8 @@ fn emuTest(filename: []const u8) !void {
     const file = try std.fs.cwd().openFile(filename, .{ .mode = .read_only });
     defer file.close();
 
-    var disk = try std.fs.cwd().openFile("/dev/null", .{ .mode = .read_write });
-    defer disk.close();
-
     var cpu = try Cpu.init(reader, writer);
-    try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, &disk, arena.allocator());
+    try cpu.init(try file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 256), 1024 * 1024 * 256, null, arena.allocator());
 
     while (true) {
         const inst = cpu.fetch() catch |exception| blk: {

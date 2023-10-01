@@ -16,11 +16,8 @@ fn emuTest(_code: []const u8, expected_regs: []const []const u64, expected_pc: u
     var code: [1024]u8 = undefined;
     std.mem.copy(u8, &code, _code);
 
-    var disk = try std.fs.cwd().openFile("/dev/null", .{ .mode = .read_write });
-    defer disk.close();
-
     var cpu = try Cpu.init(reader, writer);
-    try cpu.init(&code, 1024 * 1024 * 256, &disk, arena.allocator());
+    try cpu.init(&code, 1024 * 1024 * 256, null, arena.allocator());
 
     while (cpu.pc - bus.DRAM_BASE < code.len) {
         const inst = cpu.fetch() catch |exception| blk: {
@@ -70,7 +67,7 @@ test "slti" {
         0x13, 0x08, 0xb0, 0xff, // addi x16 x0, -5
         0x93, 0x28, 0xe8, 0xff, // slti x17, x16, -2
     }, &.{
-        &.{ 16, @bitCast(u64, @as(i64, -5)) },
+        &.{ 16, @as(u64, @bitCast(@as(i64, -5))) },
         &.{ 17, 1 },
     }, 0);
 }
@@ -100,8 +97,8 @@ test "srai" {
         0x13, 0x08, 0x80, 0xff, // addi x16, x0, -8
         0x93, 0x58, 0x28, 0x40, // srai x17, x16, 2
     }, &.{
-        &.{ 16, @bitCast(u64, @as(i64, -8)) },
-        &.{ 17, @bitCast(u64, @as(i64, -2)) },
+        &.{ 16, @as(u64, @bitCast(@as(i64, -8))) },
+        &.{ 17, @as(u64, @bitCast(@as(i64, -2))) },
     }, 0);
 }
 
@@ -161,7 +158,7 @@ test "sub" {
         0x13, 0x02, 0x60, 0x00, // addi x4, x0, 6
         0x33, 0x81, 0x41, 0x40, // sub x2, x3, x4
     }, &.{
-        &.{ 2, @bitCast(u64, @as(i64, -1)) },
+        &.{ 2, @as(u64, @bitCast(@as(i64, -1))) },
         &.{ 3, 5 },
         &.{ 4, 6 },
     }, 0);
@@ -185,7 +182,7 @@ test "slt" {
         0x93, 0x08, 0x20, 0x00, // addi x17, x0, 2
         0x33, 0x29, 0x18, 0x01, // slt x18, x16, x17
     }, &.{
-        &.{ 16, @bitCast(u64, @as(i64, -8)) },
+        &.{ 16, @as(u64, @bitCast(@as(i64, -8))) },
         &.{ 17, 2 },
         &.{ 18, 1 },
     }, 0);
@@ -233,9 +230,9 @@ test "sra" {
         0x93, 0x08, 0x20, 0x00, // addi x17, x0, 2
         0x33, 0x59, 0x18, 0x41, // sra x18, x16, x17
     }, &.{
-        &.{ 16, @bitCast(u64, @as(i64, -16)) },
+        &.{ 16, @as(u64, @bitCast(@as(i64, -16))) },
         &.{ 17, 2 },
-        &.{ 18, @bitCast(u64, @as(i64, -4)) },
+        &.{ 18, @as(u64, @bitCast(@as(i64, -4))) },
     }, 0);
 }
 

@@ -264,8 +264,7 @@ pub fn Cpu(comptime reader: anytype, comptime writer: anytype) type {
                 if ((r == 1) or (x == 1)) break;
                 i -= 1;
 
-                const ppn = (pte >> 10) & 0xfffffffffff;
-                a = ppn * PAGE_SIZE;
+                a = (pte >> 10) & 0xfffffffffff * PAGE_SIZE;
                 if (i < 0)
                     return switch (access_type) {
                         .Instruction => error.InstructionPageFault,
